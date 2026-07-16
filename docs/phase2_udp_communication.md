@@ -386,17 +386,7 @@ With a tick size of one cent:
 The complete software packet path was successfully verified:
 
 ```text
-Windows Python sender
-        |
-        | 32-byte UDP payload
-        v
-Direct Ethernet connection
-        |
-        v
-PYNQ Linux network stack
-        |
-        v
-Python packet validation and decoding
+Windows Python sender -> Direct Ethernet connection -> PYNQ Linux network stack -> Python packet validation and decoding
 ```
 
 This confirms that:
