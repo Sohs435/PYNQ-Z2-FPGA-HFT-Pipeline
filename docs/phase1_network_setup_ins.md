@@ -122,4 +122,7 @@ Packets: Sent = 4, Received = 4, Lost = 0 (0% loss)
 6. Verify the Ethernet link using `cat /sys/class/net/eth0/carrier`.
 7. Ping `192.168.2.99` from the Windows host.
 
-Move on to Phase 2 if all steps completed and verification goes smoothly
+Move on to Phase 2 if all steps completed and verification goes smoothly.
+
+Additionally, please note that rebooting PYNQ Z2 should be done if one has connected it to the router
+running the internet connection via ethernet before this. Can be performed on tera term or putty.
