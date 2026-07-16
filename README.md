@@ -53,7 +53,7 @@ Laptop UDP generator
 
 ## Packet format
 
-See `docs/packet_format.md`.
+See `phase2_udp_communication.md` section 2.2 and 2.3. 
 
 ## Repository structure
 
