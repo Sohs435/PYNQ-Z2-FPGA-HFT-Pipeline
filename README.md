@@ -2,10 +2,10 @@
 
 ## Overview
 
-Low-latency market-data processing and trading pipeline developed on a
-PYNQ-Z2 using Python, Linux networking, AXI DMA, AXI4-Stream, and system verilog and sibling language/s.
+Low-latency market-data processing and trading pipeline emulation developed on a
+PYNQ-Z2 using Python, Linux networking, AXI DMA, AXI4-Stream, system verilog and sibling language/s.
 
-Figure 1 illustrates the end-to-end packet flow through the proposed architecture. Market data is generated on the host computer, transmitted over Gigabit Ethernet to the PYNQ-Z2, transferred from the Processing System (PS) to the Programmable Logic (PL) using AXI DMA, and finally processed by the FPGA trading pipeline.
+Figure 1 illustrates the end-to-end packet flow through the proposed architecture. Market data is generated on the host computer, transmitted over Gigabit Ethernet to the PYNQ-Z2, transferred from the Processing System to the Programmable Logic using AXI DMA, and finally processed by the FPGA trading pipeline.
 
 <p align="center">
   <img src="images/fig1_packet_flow.png"
