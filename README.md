@@ -38,16 +38,18 @@ Laptop UDP generator
 - 16 GB micro SD-card
 - USB connection to laptop for power
 
-## Current status
+## Project progress
 
-- [x] Direct Ethernet connection
-- [x] Static PYNQ address: 192.168.2.99
-- [ ] UDP market-data generator
-- [ ] UDP receiver
-- [ ] AXI DMA loopback
-- [ ] Ethernet/IPv4/UDP parser
-- [ ] Trading strategy
-- [ ] Latency measurements
+- [x] Phase 1 — Direct Ethernet network setup
+- [x] Phase 2.1 — UDP Hello World
+- [x] Phase 2.2 — Define 32-byte market-data packet
+- [ ] Phase 2.3 — Send and decode the binary packet
+- [ ] Phase 2.4 — Continuous market-data stream
+- [ ] Phase 2.5 — Sequence and packet-rate testing
+- [ ] Phase 3 — AXI DMA integration
+- [ ] Phase 4 — FPGA packet parser
+- [ ] Phase 5 — Trading strategy
+- [ ] Phase 6 — Performance benchmarking
 
 ## Packet format
 
