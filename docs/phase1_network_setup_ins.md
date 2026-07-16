@@ -1,5 +1,7 @@
 # Network Setup - Phase 1
 
+**Objective:** Configure a direct Gigabit Ethernet connection between the host laptop and the PYNQ-Z2 development board to establish a reliable communication channel for subsequent UDP-based packet transmission.
+
 ## Hardware Connection
 
 Laptop Ethernet port to PYNQ-Z2 RJ45 Ethernet port
