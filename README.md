@@ -45,7 +45,7 @@ Laptop UDP generator
 - [x] Phase 2.2 — Define 32-byte market-data packet
 - [x] Phase 2.3 — Send and decode the binary packet
 - [x] Phase 2.4 — Continuous market-data stream
-- [ ] Phase 2.5 — Sequence and packet-rate testing
+- [x] Phase 2.5 — Sequence and packet-rate testing
 - [ ] Phase 3 — AXI DMA integration
 - [ ] Phase 4 — FPGA packet parser
 - [ ] Phase 5 — Trading strategy
