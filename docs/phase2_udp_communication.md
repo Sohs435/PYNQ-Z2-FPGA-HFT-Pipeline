@@ -713,3 +713,125 @@ packets.
 The next phase will use AXI DMA to transfer data between the processing system
 and programmable logic. This will verify the PS-to-PL streaming path before the
 Ethernet, IPv4 and UDP parsing logic is moved into FPGA hardware.
+
+## Phase 2.5 — Sustained Reliability Validation
+
+### Objective
+
+Validate that the selected maximum software rate of 7,500 packets/s can be
+sustained over a long test without packet loss, corruption, duplicate packets or
+ordering errors.
+
+This phase uses the completed Phase 2.4 packet generator and receiver without
+adding profiling work to the per-packet receive path.
+
+### Test Configuration
+
+| Item | Configuration |
+|---|---|
+| Host | Windows laptop, `192.168.2.1` |
+| Receiver | PYNQ-Z2, `192.168.2.99` |
+| Transport | UDP over direct Gigabit Ethernet |
+| UDP port | `5001` |
+| Payload format | Fixed 32-byte big-endian `HFT1` market-data packet |
+| Target rate | `7,500 packets/s` |
+| Test duration | `100 seconds` |
+| Planned packets | `750,000` |
+| Requested socket receive buffer | `4 MiB` |
+| Actual Linux socket receive buffer | `8,388,608 bytes` |
+
+Before starting the receiver, the PYNQ kernel receive-buffer limit was set to:
+
+```bash
+sudo sysctl -w net.core.rmem_max=8388608
+```
+
+### Commands
+
+Start the receiver on the PYNQ-Z2:
+
+```bash
+python3 receive_market_stream.py
+```
+
+Start the sustained stream from the Windows host:
+
+```powershell
+python .\send_market_stream.py --pps 7500 --duration 100
+```
+
+### Acceptance Criteria
+
+The test passes only when:
+
+```text
+Valid unique packets: 750,000
+Missing packets:      0
+Invalid packets:      0
+Duplicate packets:    0
+Out-of-order packets: 0
+Packet error rate:    0.000000%
+Result:               PASS
+```
+
+The measured duration and average receive rate must also remain close to the
+100-second and 7,500 packets/s targets.
+
+### Final Result
+
+The sustained validation completed successfully:
+
+```text
+Target rate:           7,500 packets/s
+Packets sent:          750,000
+Valid unique packets:  750,000
+Missing packets:       0
+Invalid packets:       0
+Duplicate packets:     0
+Out-of-order packets:  0
+Highest sequence:      750,000
+Measured duration:     99.996 s
+Average receive rate:  7,500 pps
+Packet error rate:     0.000000%
+Invalid packet rate:   0.000000%
+Duplicate packet rate: 0.000000%
+Out-of-order rate:     0.000000%
+Result:                PASS
+```
+
+### Outcome
+
+The Python/Linux receiver sustained the selected 7,500 packets/s operating rate
+for 100 seconds and received all 750,000 market-data packets exactly once.
+
+The receive buffer absorbed short scheduling jitter without loss, and the final
+average rate matched the sender target exactly.
+
+The validated software baseline is therefore:
+
+```text
+Sustained operating rate: 7,500 packets/s
+Packet loss:              0.000000%
+Test duration:            100 seconds
+```
+
+The 7,500 packets/s result is the reference point for subsequent FPGA work.
+It represents the current Linux/Python per-packet processing limit, not the
+capacity of the Gigabit Ethernet link or the FPGA fabric.
+
+### Phase 2 Completion
+
+Phase 2 is complete. It established:
+
+- direct UDP communication between the Windows host and PYNQ-Z2;
+- a deterministic 32-byte binary market-data protocol;
+- packet validation and sequence-integrity checking;
+- continuous market-data streaming;
+- a configured 8 MiB UDP receive buffer for short bursts; and
+- a verified sustained software throughput of 7,500 packets/s.
+
+### Next Phase
+
+Phase 3 introduces AXI DMA loopback between the Zynq processing system and
+programmable logic. The objective is to verify the PS-to-PL streaming path before
+packet parsing and trading logic are implemented in FPGA hardware.
