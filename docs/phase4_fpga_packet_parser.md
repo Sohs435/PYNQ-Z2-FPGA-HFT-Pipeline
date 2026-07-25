@@ -837,7 +837,7 @@ The testbench completed with:
 Phase 4.3 counter and backpressure test: PASS
 ```
 
-![Figure 4.1 — Phase 4.3 counter wrap and AXI backpressure](docs/images/phase4_3_counter_backpressure_waveform.png)
+![Figure 4.1 — Phase 4.3 counter wrap and AXI backpressure](images/phase4_3_counter_backpressure_waveform.png)
 
 The waveform must clearly show:
 
@@ -1044,7 +1044,7 @@ validation is introduced during Phase 4.5.
 
 ### 4.4.7 Waveform result
 
-![Figure 4.2 — Phase 4.4 HFT1 field extraction under AXI backpressure](docs/images/phase4_4_field_extraction_waveform.png)
+![Figure 4.2 — Phase 4.4 HFT1 field extraction under AXI backpressure](images/phase4_4_field_extraction_waveform.png)
 
 The waveform demonstrates:
 
