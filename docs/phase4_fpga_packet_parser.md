@@ -1318,18 +1318,4 @@ Phase 4.5 is complete because:
 - a valid packet is accepted immediately after a multi-error packet;
 - the self-checking testbench completed with `PASS`.
 
-## 4.6 Next Step — Backpressure and Consecutive Packets
-
-Phase 4.6 will stress the completed parser with:
-
-- downstream backpressure applied at different packet positions;
-- consecutive packets with no idle clock between them;
-- valid and invalid packets interleaved;
-- validation state held stable during every stall;
-- byte-exact AXI forwarding during the same tests.
-
-This stage will prove that the completed validation logic preserves the
-one-beat-per-clock AXI datapath and cannot produce false errors when traffic
-stalls.
-
 
