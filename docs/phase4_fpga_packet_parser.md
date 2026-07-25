@@ -1318,4 +1318,233 @@ Phase 4.5 is complete because:
 - a valid packet is accepted immediately after a multi-error packet;
 - the self-checking testbench completed with `PASS`.
 
+## 4.6 Continuous Traffic and Backpressure Verification
+
+### 4.6.1 Objective
+
+Phase 4.6 verifies that the HFT1 packet parser preserves correct AXI4-Stream behaviour during continuous packet traffic and downstream backpressure.
+
+The parser RTL was not changed for this phase. A new testbench, `hft_packet_parser_stream_tb.sv`, was created to stress the forwarding and parsing logic under conditions that are closer to the final DMA data path.
+
+The test verifies that:
+
+- Consecutive HFT1 packets can be accepted without an idle cycle between packets.
+- Backpressure propagates from `m_axis_tready` to `s_axis_tready`.
+- Input, output, and parser state remain stable while a beat is stalled.
+- Every accepted input beat produces exactly one matching output beat.
+- Packet boundaries remain aligned after stalls.
+- `word_index` advances only on a completed input handshake.
+- Valid and invalid packets still produce the correct completion pulse and error flags.
+
+### 4.6.2 Difference from Earlier Testbenches
+
+| Phase | Main purpose | Traffic pattern | Principal checks |
+|---|---|---|---|
+| 4.4 | Field extraction | One packet with gaps between beats | Byte swapping, decoded fields, counter wrap |
+| 4.5 | Packet validation | Multiple packets with gaps | Validity rules, error accumulation, error flags |
+| 4.6 | Stream robustness | Three consecutive packets with no deliberate inter-packet gaps | Backpressure, stability, byte-exact forwarding, no loss or duplication |
+
+Unlike the earlier `send_beat` task, the Phase 4.6 source keeps `s_axis_tvalid` asserted while packet data is available. It changes to the next beat only after:
+
+```systemverilog
+s_axis_tvalid && s_axis_tready
+```
+
+This models a continuous AXI4-Stream source correctly. If the parser lowers `s_axis_tready`, the source holds `s_axis_tdata`, `s_axis_tkeep`, and `s_axis_tlast` unchanged until the stalled beat is accepted.
+
+### 4.6.3 Test Packet Sequence
+
+The test sends 24 AXI beats, corresponding to three complete 32-byte HFT1 packets.
+
+| Packet | Message | Expected result | Expected flags |
+|---:|---|---|---:|
+| 0 | Valid quote update | `packet_valid` pulse | `8'h00` |
+| 1 | Packet with invalid version | `packet_error` pulse | `8'h02` |
+| 2 | Valid `STREAM_END` | `packet_valid` pulse | `8'h00` |
+
+The packets are placed next to each other in the source array. There is no required idle cycle when `word_index` wraps from beat 7 of one packet to beat 0 of the next.
+
+### 4.6.4 Backpressure Schedule
+
+The testbench deliberately lowers `m_axis_tready` at several locations:
+
+- In the middle of packet 0.
+- Before the final beat of packet 0.
+- Across the boundary between packets 0 and 1.
+- In the middle of the invalid packet.
+
+When the output register is occupied and `m_axis_tready` is low, the parser produces:
+
+```systemverilog
+s_axis_tready = !m_axis_tvalid || m_axis_tready;
+```
+
+Therefore, `s_axis_tready` becomes low and prevents the upstream source from advancing. Once `m_axis_tready` returns high, the held output beat is consumed and the parser can accept the next input beat.
+
+### 4.6.5 Stall Stability Checks
+
+The testbench records the input values when an input stall begins and checks that they do not change until the handshake occurs:
+
+```systemverilog
+s_axis_tvalid && !s_axis_tready
+```
+
+The held values are:
+
+- `s_axis_tdata`
+- `s_axis_tkeep`
+- `s_axis_tlast`
+
+The testbench performs the equivalent check on the output whenever:
+
+```systemverilog
+m_axis_tvalid && !m_axis_tready
+```
+
+During an output stall, the following signals must remain stable:
+
+- `m_axis_tdata`
+- `m_axis_tkeep`
+- `m_axis_tlast`
+- `m_axis_tvalid`
+
+These checks verify the AXI4-Stream rule that a producer must not change an offered transfer while `TVALID` is high and `TREADY` is low.
+
+### 4.6.6 Byte-Exact Forwarding Scoreboard
+
+Every output handshake is compared with the corresponding expected input beat. The scoreboard checks:
+
+```systemverilog
+m_axis_tdata
+m_axis_tkeep
+m_axis_tlast
+```
+
+The output beat number is advanced only when:
+
+```systemverilog
+m_axis_tvalid && m_axis_tready
+```
+
+The simulation fails immediately if a beat is:
+
+- Dropped.
+- Duplicated.
+- Reordered.
+- Modified.
+- Given the wrong `TKEEP`.
+- Given the wrong `TLAST`.
+
+At the end of the test, the number of accepted input and output beats must both equal 24.
+
+### 4.6.7 Parser-State Checks
+
+The `word_index` counter continues to define the fixed eight-beat HFT1 packet boundary.
+
+The waveform confirms that:
+
+- `word_index` advances only when `s_axis_tvalid && s_axis_tready` is true.
+- It freezes while the input is stalled.
+- It advances from 0 through 7 for each packet.
+- It wraps from 7 back to 0 without requiring an idle cycle.
+- Backpressure does not shift the decoded fields into the wrong packet positions.
+
+The completion scoreboard also verifies that exactly three packet-completion pulses occur.
+
+### 4.6.8 Validation Results
+
+The first packet completes successfully and produces:
+
+```text
+packet_valid = 1
+packet_error = 0
+error_flags  = 0x00
+```
+
+The second packet contains an invalid version and produces:
+
+```text
+packet_valid = 0
+packet_error = 1
+error_flags  = 0x02
+```
+
+The third packet is valid and demonstrates recovery after the invalid packet:
+
+```text
+packet_valid = 1
+packet_error = 0
+error_flags  = 0x00
+```
+
+This proves that the accumulated errors are cleared at the end of each packet and do not leak into the following packet.
+
+### 4.6.9 Simulation Result
+
+The Vivado simulator reported:
+
+```text
+Phase 4.6 continuous traffic and backpressure test: PASS
+Input beats accepted:  24
+Output beats accepted: 24
+Packets completed:     3
+Input stall cycles:    13
+Output stall cycles:   13
+$finish called at time : 455 ns
+```
+
+The final counters therefore confirm:
+
+| Counter | Result |
+|---|---:|
+| Accepted input beats | 24 |
+| Accepted output beats | 24 |
+| Completed packets | 3 |
+| Input stall cycles | 13 |
+| Output stall cycles | 13 |
+
+Matching input and output beat counts prove that no transfer was lost or duplicated. Matching input and output stall counts are also consistent with backpressure propagating through the one-beat forwarding register.
+
+### 4.6.10 Waveform Evidence
+
+![Figure 4.6 — Continuous packets, backpressure, packet completion pulses, and byte-exact forwarding](images/phase4_6_continuous_backpressure_waveform.png)
+
+The waveform shows all three packets moving through the parser. The `TREADY` stalls interrupt individual transfers without changing packet order or corrupting the forwarded data. The completion pulses and `error_flags` follow the expected valid, invalid, valid sequence.
+
+### 4.6.11 Vivado Waveform Warning
+
+Vivado may display warnings similar to:
+
+```text
+WARNING: Simulation object
+/hft_packet_parser_validation_tb/magic
+was not found in the design.
+```
+
+These warnings are caused by a waveform configuration from the older Phase 4.5 testbench still referring to the `hft_packet_parser_validation_tb` hierarchy.
+
+They do not indicate an RTL or Phase 4.6 test failure. The active simulation snapshot is:
+
+```text
+hft_packet_parser_stream_tb_behav
+```
+
+The stale warnings can be removed by creating a new waveform configuration or adding signals from `/hft_packet_parser_stream_tb` instead of loading the previous validation-test waveform configuration.
+
+Initial `X` values visible before reset are also expected because the parser uses synchronous active-low reset. The registered signals become known on a rising clock edge while `aresetn` is low.
+
+### 4.6.12 Completion Criteria
+
+Phase 4.6 is complete because:
+
+- Three packets were transferred continuously.
+- All 24 input beats were accepted.
+- All 24 output beats were accepted.
+- The output scoreboard found no corruption, reordering, loss, or duplication.
+- Input and output signals remained stable during stalls.
+- `word_index` froze during backpressure and wrapped correctly.
+- Packet validation remained aligned with packet boundaries.
+- The invalid packet generated `error_flags = 8'h02`.
+- The parser recovered and accepted the following valid packet.
+- The complete self-checking testbench reported `PASS`.
 
