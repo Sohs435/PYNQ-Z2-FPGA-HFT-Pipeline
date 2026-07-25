@@ -1073,31 +1073,263 @@ Phase 4.4 is complete because:
 - backpressure caused no dropped or duplicated beat;
 - the self-checking testbench completed with `PASS`.
 
-## 4.5 Next Step — Packet Validation
+### 4.5 Packet Validation and Error Reporting
 
-Phase 4.5 will accumulate packet errors across all eight accepted beats and
-produce one-cycle completion pulses after beat 7.
+### 4.5.1 Objective
 
-The planned error mapping is:
+Phase 4.5 adds protocol validation to the field-extraction and forwarding logic
+verified during Phase 4.4. Each accepted AXI beat is checked independently,
+while an internal accumulator retains every error found across the complete
+eight-beat packet.
 
-| Bit | Error |
-|---:|---|
-| `error_flags[0]` | Invalid magic |
-| `error_flags[1]` | Unsupported version |
-| `error_flags[2]` | Unsupported message type |
-| `error_flags[3]` | Invalid side |
-| `error_flags[4]` | Non-zero reserved byte |
-| `error_flags[5]` | Incorrect `TKEEP` |
-| `error_flags[6]` | Early `TLAST` |
-| `error_flags[7]` | Missing `TLAST` on beat 7 |
-
-At packet completion:
+At beat 7, the parser produces one of two mutually exclusive completion pulses:
 
 ```text
-No accumulated errors -> pulse packet_valid for one clock
-One or more errors     -> pulse packet_error for one clock
+No accumulated errors -> packet_valid = 1 for one clock
+One or more errors     -> packet_error = 1 for one clock
 ```
 
-Validation state will update only on `axis_fire`, ensuring that gaps and
-backpressure cannot generate false errors.
+`error_flags` is asserted during the same completion clock and identifies every
+failed check.
+
+### 4.5.2 Protocol validation rules
+
+The implemented protocol constants match the Phase 2 sender:
+
+```text
+Magic:           HFT1
+Version:         1
+Message type 1:  Quote update
+Message type 4:  STREAM_START
+Message type 5:  STREAM_END
+Quote side 0:    BID
+Quote side 1:    ASK
+Control side:    0
+Reserved byte:   0
+```
+
+Every packet must also contain exactly eight full 32-bit beats:
+
+```text
+TKEEP on every beat: 4'b1111
+TLAST on beats 0–6:  0
+TLAST on beat 7:     1
+```
+
+### 4.5.3 Error-flag mapping
+
+| Flag value | Bit | Error |
+|---:|---:|---|
+| `0x01` | `error_flags[0]` | Invalid magic |
+| `0x02` | `error_flags[1]` | Unsupported version |
+| `0x04` | `error_flags[2]` | Unsupported message type |
+| `0x08` | `error_flags[3]` | Invalid side |
+| `0x10` | `error_flags[4]` | Non-zero reserved byte |
+| `0x20` | `error_flags[5]` | Incorrect `TKEEP` |
+| `0x40` | `error_flags[6]` | Early `TLAST` |
+| `0x80` | `error_flags[7]` | Missing `TLAST` on beat 7 |
+
+Because `error_flags` is a bit mask, several failures may be reported together.
+For example:
+
+```text
+0xE3 = invalid magic
+     + invalid version
+     + incorrect TKEEP
+     + early TLAST
+     + missing final TLAST
+```
+
+### 4.5.4 Current-beat validation
+
+`current_errors` is combinational logic describing only the beat presently on
+the input:
+
+```systemverilog
+logic [7:0] current_errors;
+logic [7:0] packet_errors;
+```
+
+The result is consumed only when:
+
+```systemverilog
+axis_fire = s_axis_tvalid && s_axis_tready;
+```
+
+Consequently, a stalled beat may remain on the input for several clocks without
+being counted or validated more than once.
+
+The framing checks are:
+
+```systemverilog
+if (s_axis_tkeep != 4'hF)
+    current_errors = current_errors | ERROR_KEEP;
+
+if ((word_index != 3'd7) && s_axis_tlast)
+    current_errors = current_errors | ERROR_EARLY_TLAST;
+
+if ((word_index == 3'd7) && !s_axis_tlast)
+    current_errors = current_errors | ERROR_MISSING_TLAST;
+```
+
+Beat 0 checks the byte-swapped magic value:
+
+```systemverilog
+if (byte_swap32(s_axis_tdata) != 32'h48465431)
+    current_errors = current_errors | ERROR_MAGIC;
+```
+
+Beat 1 checks the version, message type, side and reserved byte. Quote updates
+accept side `0` or `1`, while control messages require side `0`.
+
+### 4.5.5 Packet error accumulation
+
+For beats 0–6, the parser accumulates errors using a bitwise OR:
+
+```systemverilog
+packet_errors <= packet_errors | current_errors;
+```
+
+The OR operation preserves every error already detected while adding any new
+flag produced by the current beat.
+
+At beat 7:
+
+```systemverilog
+if (word_index == 3'd7) begin
+    word_index  <= 3'd0;
+    error_flags <= packet_errors | current_errors;
+
+    if ((packet_errors | current_errors) == 8'b0)
+        packet_valid <= 1'b1;
+    else
+        packet_error <= 1'b1;
+
+    packet_errors <= 8'b0;
+end
+```
+
+The completion expression explicitly includes both `packet_errors` and
+`current_errors`. This is required because non-blocking assignments do not
+update `packet_errors` until the end of the clock step. Without the explicit OR,
+an error first detected on beat 7 would not be included in the completion
+decision.
+
+Clearing `packet_errors` after beat 7 ensures that an invalid packet cannot
+contaminate the result of the next packet.
+
+### 4.5.6 One-clock completion outputs
+
+At the beginning of every non-reset clock, the status outputs default to zero:
+
+```systemverilog
+packet_valid <= 1'b0;
+packet_error <= 1'b0;
+error_flags  <= 8'b0;
+```
+
+Beat 7 overrides these assignments for one clock. Therefore,
+`packet_valid`, `packet_error` and `error_flags` are completion pulses rather
+than persistent status registers.
+
+At a wide waveform scale, the `error_flags` bus appears to remain at `00`
+because each non-zero value occupies only one clock period. Expanding the
+individual bits or zooming into a `packet_error` pulse reveals the expected
+value.
+
+### 4.5.7 Self-checking validation testbench
+
+The validation testbench is:
+
+```text
+hft_packet_parser_validation_tb.sv
+```
+
+It performs twelve packet tests:
+
+| Test | Packet condition | Expected completion | Expected flags |
+|---:|---|---|---:|
+| 1 | Valid quote update | `packet_valid` | `0x00` |
+| 2 | Valid `STREAM_START` | `packet_valid` | `0x00` |
+| 3 | Invalid magic | `packet_error` | `0x01` |
+| 4 | Invalid version | `packet_error` | `0x02` |
+| 5 | Unsupported message type | `packet_error` | `0x04` |
+| 6 | Invalid quote side | `packet_error` | `0x08` |
+| 7 | Non-zero reserved byte | `packet_error` | `0x10` |
+| 8 | Incorrect `TKEEP` | `packet_error` | `0x20` |
+| 9 | Early `TLAST` | `packet_error` | `0x40` |
+| 10 | Missing final `TLAST` | `packet_error` | `0x80` |
+| 11 | Multiple accumulated errors | `packet_error` | `0xE3` |
+| 12 | Valid `STREAM_END` after errors | `packet_valid` | `0x00` |
+
+The testbench also confirms that:
+
+- no completion pulse occurs before beat 7;
+- `word_index` returns to zero after every packet;
+- all completion outputs clear after one clock;
+- the error accumulator is clean for the following packet.
+
+The complete test produced:
+
+```text
+Phase 4.5 packet validation test: PASS
+```
+
+### 4.5.8 Overall validation waveform
+
+The overall waveform shows the complete twelve-packet validation sequence:
+
+![Figure 4.4 — Phase 4.5 overall packet-validation simulation](images/phase4_5_validation_overall_waveform.png)
+
+The trace shows:
+
+- valid-packet pulses for the initial quote and `STREAM_START` packets;
+- one `packet_error` pulse for each malformed packet;
+- `word_index` repeatedly advancing from `0` through `7` and wrapping to `0`;
+- individual error bits pulsing in the expected test order;
+- the final valid `STREAM_END` proving recovery after accumulated errors.
+
+### 4.5.9 Zoomed error-flag waveform
+
+The zoomed waveform makes the one-clock bus values visible:
+
+![Figure 4.5 — Phase 4.5 zoomed one-clock error-flag pulses](images/phase4_5_error_flags_zoom_waveform.png)
+
+In the displayed section:
+
+- the invalid-version packet produces `packet_error=1` with
+  `error_flags=0x02`;
+- the unsupported-message packet produces `packet_error=1` with
+  `error_flags=0x04`;
+- each flag returns to `0x00` on the following clock;
+- each error pulse occurs when `word_index` wraps from `7` to `0`.
+
+### 4.5.10 Phase 4.5 result
+
+Phase 4.5 is complete because:
+
+- all protocol fields are checked against the frozen HFT1 definition;
+- all eight error classifications were observed;
+- errors accumulate correctly across separate packet beats;
+- beat-7 errors are included in the same completion decision;
+- valid and invalid packets generate mutually exclusive completion pulses;
+- completion outputs remain asserted for exactly one clock;
+- validation state is cleared between packets;
+- a valid packet is accepted immediately after a multi-error packet;
+- the self-checking testbench completed with `PASS`.
+
+## 4.6 Next Step — Backpressure and Consecutive Packets
+
+Phase 4.6 will stress the completed parser with:
+
+- downstream backpressure applied at different packet positions;
+- consecutive packets with no idle clock between them;
+- valid and invalid packets interleaved;
+- validation state held stable during every stall;
+- byte-exact AXI forwarding during the same tests.
+
+This stage will prove that the completed validation logic preserves the
+one-beat-per-clock AXI datapath and cannot produce false errors when traffic
+stalls.
+
 
