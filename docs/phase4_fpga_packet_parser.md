@@ -627,3 +627,487 @@ Phase 4.1 is complete because:
 The Python sender must continue transmitting the original network-order packet
 bytes. Byte-lane reordering will be handled inside the FPGA parser.
 
+## 4.2 Parser Interface and AXI4-Stream Forwarding
+
+### 4.2.1 Objective
+
+Phase 4.2 created the complete parser interface while preserving the
+backpressure-safe AXI4-Stream forwarding behaviour verified during Phase 3.
+
+The source file is:
+
+```text
+hft_packet_parser.sv
+```
+
+At this stage the module did not yet interpret packet fields. It provided a
+stable interface onto which the counter, extraction and validation logic could
+be added incrementally.
+
+### 4.2.2 AXI4-Stream input and output interfaces
+
+The input interface from AXI DMA MM2S is:
+
+| Signal | Width | Direction | Purpose |
+|---|---:|---|---|
+| `s_axis_tdata` | 32 | Input | Four packet bytes |
+| `s_axis_tkeep` | 4 | Input | Identifies valid byte lanes |
+| `s_axis_tvalid` | 1 | Input | Upstream has a valid beat |
+| `s_axis_tready` | 1 | Output | Parser can accept the beat |
+| `s_axis_tlast` | 1 | Input | Marks the end of the DMA frame |
+
+The forwarded interface to the AXI FIFO or AXI DMA S2MM is:
+
+| Signal | Width | Direction | Purpose |
+|---|---:|---|---|
+| `m_axis_tdata` | 32 | Output | Unmodified packet bytes |
+| `m_axis_tkeep` | 4 | Output | Forwarded byte-valid mask |
+| `m_axis_tvalid` | 1 | Output | Registered output beat is valid |
+| `m_axis_tready` | 1 | Input | Downstream can accept the beat |
+| `m_axis_tlast` | 1 | Output | Forwarded end-of-frame marker |
+
+The decoded-field interface exposes:
+
+```text
+magic
+version
+message_type
+side
+reserved_field
+seq
+timestamp_ns
+instrument_id
+price_ticks
+quantity
+word_index
+packet_valid
+packet_error
+error_flags
+```
+
+`seq` is used instead of `sequence` because `sequence` is a reserved
+SystemVerilog Assertions keyword.
+
+### 4.2.3 One-beat elastic register
+
+The forwarding path contains one registered output slot. Input readiness is:
+
+```systemverilog
+always_comb begin
+    s_axis_tready = !m_axis_tvalid || m_axis_tready;
+end
+```
+
+The parser accepts an input beat when either:
+
+- the output slot is empty; or
+- the current output beat is being consumed during the same clock cycle.
+
+The resulting behaviour is:
+
+| Output register | `m_axis_tready` | `s_axis_tready` | Behaviour |
+|---|---:|---:|---|
+| Empty | 0 or 1 | 1 | Accept one input beat |
+| Occupied | 1 | 1 | Consume and replace the beat |
+| Occupied | 0 | 0 | Hold the output and backpressure MM2S |
+
+The registered forwarding logic is:
+
+```systemverilog
+if (s_axis_tready) begin
+    m_axis_tvalid <= s_axis_tvalid;
+
+    if (s_axis_tvalid) begin
+        m_axis_tdata <= s_axis_tdata;
+        m_axis_tkeep <= s_axis_tkeep;
+        m_axis_tlast <= s_axis_tlast;
+    end
+end
+```
+
+When `m_axis_tvalid=1` and `m_axis_tready=0`, `s_axis_tready` becomes zero.
+Because the forwarding registers are not updated in that condition, `TDATA`,
+`TKEEP` and `TLAST` remain stable for the complete stall.
+
+This design can sustain one accepted 32-bit beat per clock when both sides
+remain ready.
+
+### 4.2.4 Phase 4.2 result
+
+Phase 4.2 is complete because:
+
+- the full parser interface was accepted by Vivado;
+- `TDATA`, `TKEEP` and `TLAST` are forwarded unchanged;
+- the output remains stable during downstream backpressure;
+- the design can consume and replace an output beat in the same cycle;
+- all decoded and status outputs receive defined reset values.
+
+## 4.3 Fixed-Length Packet Framing
+
+### 4.3.1 AXI transfer event
+
+Parser state may change only after an actual AXI handshake:
+
+```systemverilog
+logic axis_fire;
+
+assign axis_fire = s_axis_tvalid && s_axis_tready;
+```
+
+`TVALID` without `TREADY` does not transfer data. Using `axis_fire` therefore
+prevents the parser from counting or decoding the same stalled beat multiple
+times.
+
+### 4.3.2 Eight-beat counter
+
+A three-bit `word_index` identifies the current word of the fixed 32-byte
+packet:
+
+| `word_index` | Packet bytes | Field |
+|---:|---:|---|
+| 0 | 0–3 | Magic |
+| 1 | 4–7 | Version, message type, side and reserved |
+| 2 | 8–11 | Sequence number |
+| 3 | 12–15 | Timestamp upper 32 bits |
+| 4 | 16–19 | Timestamp lower 32 bits |
+| 5 | 20–23 | Instrument ID |
+| 6 | 24–27 | Price ticks |
+| 7 | 28–31 | Quantity |
+
+The counter resets to zero and advances only on `axis_fire`:
+
+```systemverilog
+if (axis_fire) begin
+    if (word_index == 3'd7)
+        word_index <= 3'd0;
+    else
+        word_index <= word_index + 3'd1;
+end
+```
+
+The index visible before an active clock edge identifies the beat being
+accepted on that edge. After acceptance, it advances to the index of the next
+expected beat.
+
+### 4.3.3 Framing rule
+
+The parser treats every eight accepted 32-bit beats as one HFT1 packet:
+
+```text
+8 beats * 32 bits = 256 bits = 32 bytes
+```
+
+`TLAST` does not control the counter. This prevents malformed `TLAST` metadata
+from shifting the field interpretation of every following word. Instead,
+Phase 4.5 will check that:
+
+```text
+Beats 0–6: TLAST must be 0
+Beat 7:    TLAST must be 1
+```
+
+### 4.3.4 Counter and backpressure test
+
+The Phase 4.3 testbench sends eight words through the parser and introduces a
+three-cycle downstream stall. The central test sequence is:
+
+```text
+word_index: 0 -> 1 -> 2 -> 3
+                         -> hold during the stall
+                         -> 4 -> 5 -> 6 -> 7 -> 0
+```
+
+During the tested stall:
+
+```text
+m_axis_tready = 0
+s_axis_tready = 0
+word_index    = 3
+m_axis_tdata  = 0xA0000002
+```
+
+The registered output word remains stable, and the counter does not advance
+until downstream readiness returns.
+
+### 4.3.5 Simulation result
+
+The testbench completed with:
+
+```text
+Phase 4.3 counter and backpressure test: PASS
+```
+
+Add the Phase 4.3 counter/backpressure waveform immediately below the result:
+
+```markdown
+![Figure 4.2 — Phase 4.3 counter wrap and AXI backpressure](images/phase4_3_counter_backpressure_waveform.png)
+```
+
+The waveform must clearly show:
+
+- `word_index` holding at `3`;
+- `s_axis_tready` low during the stall;
+- `m_axis_tdata` remaining stable;
+- the counter continuing after the stall;
+- the final transition from `7` back to `0`.
+
+### 4.3.6 Phase 4.3 result
+
+Phase 4.3 is complete because:
+
+- the counter resets to zero;
+- only accepted beats advance the counter;
+- backpressure freezes packet position;
+- eight accepted beats wrap the index back to zero;
+- packet framing remains independent of malformed `TLAST`.
+
+## 4.4 HFT1 Field Extraction
+
+### 4.4.1 Objective
+
+Phase 4.4 uses `word_index` to decode the fixed HFT1 packet while continuing to
+forward the original AXI stream unchanged.
+
+Field registers update only inside:
+
+```systemverilog
+if (axis_fire) begin
+    // Field extraction
+end
+```
+
+Consequently, gaps in `TVALID` and stalls in `TREADY` cannot cause a field to
+be skipped or captured twice.
+
+### 4.4.2 Byte-swap function
+
+Phase 4.1 showed that each network-order word appears byte-reversed when the
+complete `TDATA[31:0]` vector is displayed. The parser restores the numeric
+network-order value with:
+
+```systemverilog
+function automatic logic [31:0] byte_swap32(
+    input logic [31:0] data
+);
+    byte_swap32 = {
+        data[7:0],
+        data[15:8],
+        data[23:16],
+        data[31:24]
+    };
+endfunction
+```
+
+The function returns 32 bits. Declaring it as `[32:0]` would incorrectly create
+a 33-bit result and generate a width mismatch.
+
+### 4.4.3 Per-beat extraction
+
+The implemented extraction logic is:
+
+```systemverilog
+if (axis_fire) begin
+    case (word_index)
+        3'd0: begin
+            magic <= byte_swap32(s_axis_tdata);
+        end
+
+        3'd1: begin
+            version        <= s_axis_tdata[7:0];
+            message_type   <= s_axis_tdata[15:8];
+            side           <= s_axis_tdata[23:16];
+            reserved_field <= s_axis_tdata[31:24];
+        end
+
+        3'd2: begin
+            seq <= byte_swap32(s_axis_tdata);
+        end
+
+        3'd3: begin
+            timestamp_ns[63:32] <= byte_swap32(s_axis_tdata);
+        end
+
+        3'd4: begin
+            timestamp_ns[31:0] <= byte_swap32(s_axis_tdata);
+        end
+
+        3'd5: begin
+            instrument_id <= byte_swap32(s_axis_tdata);
+        end
+
+        3'd6: begin
+            price_ticks <= byte_swap32(s_axis_tdata);
+        end
+
+        3'd7: begin
+            quantity <= byte_swap32(s_axis_tdata);
+        end
+    endcase
+
+    if (word_index == 3'd7)
+        word_index <= 3'd0;
+    else
+        word_index <= word_index + 3'd1;
+end
+```
+
+Beat 1 does not require a 32-bit swap because its four bytes represent four
+separate one-byte fields. The first packet byte is already located on
+`TDATA[7:0]`.
+
+### 4.4.4 Timestamp reconstruction
+
+The timestamp is a 64-bit big-endian field spanning two AXI beats:
+
+```text
+Beat 3 -> timestamp_ns[63:32]
+Beat 4 -> timestamp_ns[31:0]
+```
+
+For the recognisable test packet:
+
+```text
+Beat 3 TDATA: 0x14131211 -> swapped: 0x11121314
+Beat 4 TDATA: 0x18171615 -> swapped: 0x15161718
+
+timestamp_ns = 0x1112131415161718
+```
+
+The upper half arrives first because the original packet uses big-endian
+network byte order. Byte swapping corrects the lane interpretation within each
+32-bit beat.
+
+### 4.4.5 Field-extraction testbench
+
+The testbench source is:
+
+```text
+hft_packet_parser_fields_tb.sv
+```
+
+It transmits the same recognisable packet used during Phase 4.1:
+
+| Beat | Input `TDATA` | Expected decoded value |
+|---:|---:|---:|
+| 0 | `0x31544648` | Magic `0x48465431` |
+| 1 | `0x00010101` | Version/type/side/reserved `01/01/01/00` |
+| 2 | `0x04030201` | Sequence `0x01020304` |
+| 3 | `0x14131211` | Timestamp upper `0x11121314` |
+| 4 | `0x18171615` | Timestamp lower `0x15161718` |
+| 5 | `0x24232221` | Instrument ID `0x21222324` |
+| 6 | `0x34333231` | Price ticks `0x31323334` |
+| 7 | `0x44434241` | Quantity `0x41424344` |
+
+The `send_beat` task holds each beat stable until a rising clock edge on which
+`s_axis_tready` is high:
+
+```systemverilog
+@(posedge aclk);
+while (!s_axis_tready)
+    @(posedge aclk);
+
+@(negedge aclk);
+s_axis_tvalid = 1'b0;
+s_axis_tlast  = 1'b0;
+```
+
+This models a compliant AXI4-Stream source under backpressure.
+
+The testbench also drives `m_axis_tready` low for three clock cycles. Because
+the elastic output register is initially empty, it may accept one beat while
+the downstream interface is stalled. Once the output register becomes
+occupied, `s_axis_tready` becomes zero and no additional beat is accepted until
+the stall is released.
+
+### 4.4.6 Self-checking assertions
+
+After the eighth beat, the testbench verifies:
+
+```text
+magic          = 0x48465431
+version        = 0x01
+message_type   = 0x01
+side           = 0x01
+reserved_field = 0x00
+seq            = 0x01020304
+timestamp_ns   = 0x1112131415161718
+instrument_id  = 0x21222324
+price_ticks    = 0x31323334
+quantity       = 0x41424344
+word_index     = 0
+```
+
+Every mismatch calls `$fatal`. A successful simulation prints:
+
+```text
+Phase 4.4 field extraction test: PASS
+```
+
+`packet_valid`, `packet_error` and `error_flags` remain inactive because packet
+validation is introduced during Phase 4.5.
+
+### 4.4.7 Waveform result
+
+Add the complete Phase 4.4 field-extraction waveform immediately below this
+paragraph:
+
+```markdown
+![Figure 4.3 — Phase 4.4 HFT1 field extraction under AXI backpressure](images/phase4_4_field_extraction_waveform.png)
+```
+
+The waveform demonstrates:
+
+- all eight `TDATA` values appearing in packet order;
+- byte-swapped multibyte fields;
+- direct extraction of the four beat-1 bytes;
+- two-stage reconstruction of `timestamp_ns`;
+- correct elastic-buffer behaviour during downstream backpressure;
+- `TLAST` accompanying the final quantity beat;
+- `word_index` wrapping from `7` back to `0`;
+- no validation or error pulse before Phase 4.5.
+
+The initial unknown values are expected because the module uses synchronous
+active-low reset. All registers become defined on the first rising edge for
+which `aresetn=0`.
+
+### 4.4.8 Phase 4.4 result
+
+Phase 4.4 is complete because:
+
+- all fields were extracted at the correct beat index;
+- every multibyte value was reconstructed in network order;
+- the complete 64-bit timestamp was reconstructed correctly;
+- field state changed only on accepted AXI beats;
+- the original AXI packet was forwarded without modification;
+- backpressure caused no dropped or duplicated beat;
+- the self-checking testbench completed with `PASS`.
+
+## 4.5 Next Step — Packet Validation
+
+Phase 4.5 will accumulate packet errors across all eight accepted beats and
+produce one-cycle completion pulses after beat 7.
+
+The planned error mapping is:
+
+| Bit | Error |
+|---:|---|
+| `error_flags[0]` | Invalid magic |
+| `error_flags[1]` | Unsupported version |
+| `error_flags[2]` | Unsupported message type |
+| `error_flags[3]` | Invalid side |
+| `error_flags[4]` | Non-zero reserved byte |
+| `error_flags[5]` | Incorrect `TKEEP` |
+| `error_flags[6]` | Early `TLAST` |
+| `error_flags[7]` | Missing `TLAST` on beat 7 |
+
+At packet completion:
+
+```text
+No accumulated errors -> pulse packet_valid for one clock
+One or more errors     -> pulse packet_error for one clock
+```
+
+Validation state will update only on `axis_fire`, ensuring that gaps and
+backpressure cannot generate false errors.
+
+
