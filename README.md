@@ -53,9 +53,8 @@ See `phase2_udp_communication.md` section 2.2 and 2.3.
 
 ## Repository structure
 
-idk still need to config it will occur at some point soon 
+See docs for detailed report of how system works. Any images in md files  can be viewed better by accessing docs/images. Verilog and Systerm Verilog files currently added up to phase 3 even though some exist for phase 4. I will be adding them once I get through the entire phase in a folder called phase 4. 
 
 ## Results
 
-Timing, utilization, throughput, and latency results will be added I progress
-w/ the proj. 
+They are currently scattered all over the different files in docs. 
