@@ -1750,9 +1750,6 @@ The incomplete packet interrupted by reset is not included in the completion cou
 
 ### 4.7.9 Waveform Evidence
 
-```text
-docs/images/phase4_7_complete_regression_waveform.png
-```
 
 ![Figure 4.7 — Complete parser regression with continuous traffic and backpressure](images/phase4_7_complete_regression_waveform.png)
 
