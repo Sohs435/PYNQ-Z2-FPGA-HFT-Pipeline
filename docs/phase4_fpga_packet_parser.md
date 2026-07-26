@@ -1548,3 +1548,294 @@ Phase 4.6 is complete because:
 - The parser recovered and accepted the following valid packet.
 - The complete self-checking testbench reported `PASS`.
 
+## 4.7 Complete Parser Regression
+
+### 4.7.1 Objective
+
+Phase 4.7 combines the earlier parser simulations into one comprehensive, self-checking regression testbench:
+
+```text
+hft_packet_parser_regression_tb.sv
+```
+
+The regression verifies the complete parser rather than testing one feature in isolation. It covers packet framing, field extraction, packet validation, AXI4-Stream forwarding, backpressure, reset recovery and continuous traffic.
+
+The simulation is considered successful only when every functional check passes and every accepted input beat appears unchanged at the output.
+
+### 4.7.2 Testbench Structure
+
+The testbench contains the following main components:
+
+| Component | Purpose |
+|---|---|
+| Clock generator | Produces a 100 MHz simulation clock |
+| Packet generator | Produces valid and malformed eight-beat HFT1 packets |
+| AXI source driver | Holds each input beat until `TVALID && TREADY` |
+| Output scoreboard | Compares every output beat against the corresponding input beat |
+| Stall monitors | Confirm input, output and parser state remain stable during backpressure |
+| Completion checker | Verifies `packet_valid`, `packet_error` and `error_flags` |
+| Reset test | Interrupts an incomplete packet and verifies clean recovery |
+| Watchdog | Stops the simulation if a handshake deadlocks |
+
+All checks use `$fatal` on failure. Therefore, the final `PASS` message can only be reached if every assertion and comparison succeeds.
+
+### 4.7.3 Regression Coverage
+
+The following cases are tested:
+
+1. Valid quote-update packet.
+2. Valid `STREAM_START` packet.
+3. Valid `STREAM_END` packet.
+4. Invalid magic signature.
+5. Invalid protocol version.
+6. Unsupported message type.
+7. Invalid quote side.
+8. Invalid control-message side.
+9. Nonzero reserved byte.
+10. Incorrect `TKEEP`.
+11. Early `TLAST`.
+12. Missing final `TLAST`.
+13. Multiple errors accumulated across one packet.
+14. Valid-packet recovery after an invalid packet.
+15. Reset after three beats of an incomplete malformed packet.
+16. Valid-packet recovery after the mid-packet reset.
+17. Three consecutive packets without `TVALID` gaps.
+18. Backpressure within packets and across a packet boundary.
+
+### 4.7.4 AXI Forwarding Scoreboard
+
+Before an input beat is presented to the parser, its expected values are stored in scoreboard arrays:
+
+```systemverilog
+expected_data
+expected_keep
+expected_last
+```
+
+Whenever an output handshake occurs:
+
+```systemverilog
+m_axis_tvalid && m_axis_tready
+```
+
+the testbench compares:
+
+```systemverilog
+m_axis_tdata
+m_axis_tkeep
+m_axis_tlast
+```
+
+against the next expected beat.
+
+The simulation fails if a beat is:
+
+- Dropped.
+- Duplicated.
+- Reordered.
+- Modified.
+- Forwarded with an incorrect `TKEEP`.
+- Forwarded with an incorrect `TLAST`.
+
+This verifies that parsing takes place alongside the AXI data path without altering the original packet.
+
+### 4.7.5 Validation Error Coverage
+
+The testbench checks the complete `error_flags` mapping:
+
+| Bit | Mask | Meaning |
+|---:|---:|---|
+| 0 | `8'h01` | Invalid magic signature |
+| 1 | `8'h02` | Invalid version |
+| 2 | `8'h04` | Unsupported message type |
+| 3 | `8'h08` | Invalid side |
+| 4 | `8'h10` | Nonzero reserved byte |
+| 5 | `8'h20` | Incorrect `TKEEP` |
+| 6 | `8'h40` | Early `TLAST` |
+| 7 | `8'h80` | Missing final `TLAST` |
+
+One regression packet deliberately combines:
+
+```text
+Invalid magic
++ Invalid version
++ Incorrect TKEEP
++ Early TLAST
++ Missing final TLAST
+```
+
+The expected accumulated mask is:
+
+```text
+0x01 | 0x02 | 0x20 | 0x40 | 0x80 = 0xE3
+```
+
+The following valid packet verifies that the error accumulator is cleared at the packet boundary.
+
+### 4.7.6 Mid-Packet Reset Test
+
+The reset test sends only the first three beats of a malformed packet. At that point:
+
+```text
+word_index = 3
+```
+
+The output forwarding register is allowed to drain, after which `aresetn` is asserted low across two rising clock edges.
+
+The testbench confirms that reset:
+
+- Returns `word_index` to zero.
+- Clears `m_axis_tvalid`.
+- Clears all decoded fields.
+- Clears the accumulated packet errors.
+- Produces no completion pulse for the incomplete packet.
+
+A complete valid packet is then transmitted. It produces `packet_valid` with `error_flags = 8'h00`, proving that the parser restarts from a clean packet boundary.
+
+### 4.7.7 Continuous Traffic and Backpressure
+
+The final regression section sends three packets while keeping `s_axis_tvalid` asserted continuously:
+
+| Packet | Contents | Expected result |
+|---:|---|---|
+| 0 | Valid quote update | `packet_valid`, flags `00` |
+| 1 | Invalid version | `packet_error`, flags `02` |
+| 2 | Valid `STREAM_END` | `packet_valid`, flags `00` |
+
+The downstream interface deliberately lowers `m_axis_tready`:
+
+- Within packet 0.
+- At the packet 0/1 boundary.
+- Within packet 1.
+
+When the registered output becomes occupied, backpressure propagates to `s_axis_tready`. The source must then hold `TDATA`, `TKEEP` and `TLAST` unchanged.
+
+The testbench also captures the decoded parser state and confirms that `word_index` and the decoded fields do not change without an input handshake.
+
+### 4.7.8 Simulation Result
+
+Vivado XSim reported:
+
+```text
+============================================================
+Phase 4.7 complete parser regression: PASS
+Input beats accepted:       147
+Output beats accepted:      147
+Completed packets:          18
+Input backpressure cycles:  10
+Output backpressure cycles: 10
+============================================================
+```
+
+The simulation completed at:
+
+```text
+3046 ns
+```
+
+The final counters can also be seen in hexadecimal in the waveform:
+
+| Counter | Hexadecimal | Decimal |
+|---|---:|---:|
+| Expected input beats | `0x93` | 147 |
+| Accepted output beats | `0x93` | 147 |
+| Accepted input beats | `0x93` | 147 |
+| Completed packets | `0x12` | 18 |
+| Input stall cycles | `0x0A` | 10 |
+| Output stall cycles | `0x0A` | 10 |
+
+The equal input, expected-output and accepted-output counts prove that no beat was dropped or duplicated.
+
+The incomplete packet interrupted by reset is not included in the completion count because it never reached beat 7.
+
+### 4.7.9 Waveform Evidence
+
+Save the waveform image in the repository as:
+
+```text
+docs/images/phase4_7_complete_regression_waveform.png
+```
+
+![Figure 4.7 — Complete parser regression with continuous traffic and backpressure](images/phase4_7_complete_regression_waveform.png)
+
+The waveform shows:
+
+- Continuous `s_axis_tvalid` across the final three packets.
+- `word_index` advancing from 0 through 7 and wrapping to 0.
+- `word_index` freezing while `s_axis_tready` is low.
+- `m_axis_tready` backpressure propagating to the input.
+- Stable input and output data during stalls.
+- A `packet_valid` pulse for the first continuous packet.
+- A `packet_error` pulse with `error_flags = 8'h02` for the invalid-version packet.
+- A final `packet_valid` pulse proving recovery.
+- Final counter values of 147 input beats, 147 output beats, 18 packet completions and 10 stall cycles.
+
+The initial unknown values on the `held_*` testbench signals are expected. These registers are used only after a stall begins and are not parser outputs.
+
+### 4.7.10 Vivado Waveform Configuration Warning
+
+Vivado initially displayed warnings referring to:
+
+```text
+/hft_packet_parser_stream_tb/...
+```
+
+These warnings came from the older Phase 4.6 waveform configuration. The active Phase 4.7 simulation snapshot was:
+
+```text
+hft_packet_parser_regression_tb_behav
+```
+
+The warnings did not indicate an RTL error. The correct Phase 4.7 hierarchy was added with:
+
+```tcl
+add_wave /hft_packet_parser_regression_tb/*
+restart
+run all
+```
+
+The restarted simulation completed successfully.
+
+### 4.7.11 Running the Regression
+
+Add `hft_packet_parser_regression_tb.sv` as a Vivado simulation source and set:
+
+```text
+hft_packet_parser_regression_tb
+```
+
+as the simulation top.
+
+Then run:
+
+```tcl
+launch_simulation
+run all
+```
+
+If an older waveform configuration is still attached:
+
+```tcl
+close_sim
+set_property xsim.view {} [get_filesets sim_1]
+launch_simulation
+add_wave /hft_packet_parser_regression_tb/*
+run all
+```
+
+### 4.7.12 Completion Criteria
+
+Phase 4.7 is complete because:
+
+- All valid packet types passed.
+- Every validation error bit was exercised.
+- Multiple errors accumulated correctly.
+- All decoded fields matched their expected network-order values.
+- The parser recovered after invalid packets.
+- The parser recovered after a mid-packet reset.
+- Consecutive packets worked without `TVALID` gaps.
+- Backpressure caused no data or state corruption.
+- All 147 input beats were accepted.
+- All 147 expected output beats were received.
+- Exactly 18 complete packets produced completion pulses.
+- The self-checking regression reported `PASS`.
