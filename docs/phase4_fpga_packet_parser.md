@@ -1750,8 +1750,6 @@ The incomplete packet interrupted by reset is not included in the completion cou
 
 ### 4.7.9 Waveform Evidence
 
-Save the waveform image in the repository as:
-
 ```text
 docs/images/phase4_7_complete_regression_waveform.png
 ```
