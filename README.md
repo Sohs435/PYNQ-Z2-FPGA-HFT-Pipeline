@@ -43,7 +43,7 @@ Laptop UDP generator
 - [x] Phase 1 — Direct Ethernet network setup
 - [x] Phase 2 — UDP Communication
 - [x] Phase 3 — AXI DMA integration
-- [x] Phase 4 — FPGA packet parser - documentation in progress
+- [x] Phase 4 — FPGA packet parser - need to add some files
 - [x] Phase 5 — Trading strategy - documentation in progress
 - [ ] Phase 6 — Performance benchmarking
 
