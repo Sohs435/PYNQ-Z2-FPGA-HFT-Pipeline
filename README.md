@@ -17,7 +17,7 @@ Figure 1 illustrates the end-to-end packet flow through the proposed architectur
 <b>Figure 1.</b> End-to-end packet flow through the proposed FPGA HFT pipeline.
 </p>
 
-## Architecture (still needs to be ironed out properly)
+## ArchitecturE
 
 Laptop UDP generator
 → PYNQ PS Ethernet
