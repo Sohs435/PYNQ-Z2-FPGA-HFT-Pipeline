@@ -1834,3 +1834,511 @@ Phase 4.7 is complete because:
 - All 147 expected output beats were received.
 - Exactly 18 complete packets produced completion pulses.
 - The self-checking regression reported `PASS`.
+
+# 4.8 Vivado Hardware Integration
+
+### 4.8.1 Objective
+
+The Phase 3 AXI pass-through block was replaced with the complete HFT1 parser while preserving the previously verified DMA path:
+
+```text
+PS DDR
+-> AXI DMA MM2S
+-> HFT1 packet parser
+-> AXI4-Stream Data FIFO
+-> AXI DMA S2MM
+-> PS DDR
+```
+
+The parser continues forwarding every AXI beat unchanged. Field extraction and packet validation occur alongside the forwarding path and therefore do not alter the original payload returned to DDR.
+
+### 4.8.2 Integrated block design
+
+The final block design contains:
+
+| Block | Purpose |
+|---|---|
+| Zynq Processing System | Runs PYNQ Linux and provides access to PS DDR |
+| AXI DMA | Moves buffers between PS DDR and the AXI4-Stream datapath |
+| `hft_packet_parser_wrapper` | Exposes the SystemVerilog parser to Vivado IP Integrator |
+| AXI4-Stream Data FIFO | Buffers the parser output and propagates backpressure |
+| AXI interconnects | Connect DMA memory-mapped interfaces to the PS high-performance port |
+| ILA | Captures decoded fields, packet state, and validation results in hardware |
+
+![Final Phase 4 parser block design with ILA](images/phase4_8_integrated_block_design.png)
+
+The block-design name remained `phase3_axi_design` to preserve the working Vivado project, but the stream-processing block is now the Phase 4 HFT1 parser.
+
+### 4.8.3 AXI4-Stream connections
+
+The stream path is connected as follows:
+
+| Source | Destination |
+|---|---|
+| AXI DMA `M_AXIS_MM2S` | Parser `S_AXIS` |
+| Parser `M_AXIS` | AXI4-Stream FIFO `S_AXIS` |
+| AXI4-Stream FIFO `M_AXIS` | AXI DMA `S_AXIS_S2MM` |
+
+The parser, FIFO, DMA stream interfaces, and ILA use the same PL clock. Their active-low resets are driven by the corresponding Processor System Reset output.
+
+The parser forwards:
+
+- `TDATA[31:0]`
+- `TKEEP[3:0]`
+- `TVALID`
+- `TREADY`
+- `TLAST`
+
+Its input-ready equation remains:
+
+```systemverilog
+s_axis_tready = !m_axis_tvalid || m_axis_tready;
+```
+
+This creates a one-beat elastic output register. When the downstream path stalls, the parser deasserts `s_axis_tready` and holds the complete output beat stable.
+
+### 4.8.4 Verilog wrapper
+
+Vivado IP Integrator used a Verilog wrapper around the SystemVerilog parser. The wrapper contains no packet-processing logic; it:
+
+1. Adds AXI4-Stream interface metadata.
+2. Instantiates `hft_packet_parser`.
+3. Maps every AXI and decoded-field port directly.
+4. Exposes the parser’s `quantity` output as `qntity`.
+
+`qntity` is only a block-design-facing alias. The parser and simulation testbenches retain the clearer SystemVerilog name `quantity`:
+
+```verilog
+.quantity(qntity)
+```
+
+This avoids the Vivado IP Integrator warning associated with using `quantity` as a block-design port name.
+
+### 4.8.5 DMA batch framing
+
+The first hardware version expected `TLAST` at the end of every 32-byte packet. This is correct when each packet is submitted as a separate DMA transaction, but inefficient because software must start and wait for one DMA transaction per packet.
+
+The parser was therefore given a compile-time framing parameter:
+
+```systemverilog
+parameter logic TLAST_PER_PACKET = 1'b1
+```
+
+The hardware wrapper selects batch mode:
+
+```verilog
+hft_packet_parser #(
+    .TLAST_PER_PACKET(1'b0)
+) parser_i (
+    // Port mappings
+);
+```
+
+In batch mode:
+
+- `word_index` still defines a packet boundary every eight accepted AXI beats.
+- Intermediate packets do not require `TLAST`.
+- If `TLAST` occurs, it must still align with `word_index == 7`.
+- `TLAST` is forwarded unchanged to S2MM.
+- Existing testbenches retain the default single-packet mode.
+
+This allows one DMA transfer to contain many consecutive HFT1 packets.
+
+### 4.8.6 ILA probes
+
+The ILA captures the parser’s packet position, validation outputs, and decoded fields:
+
+| Probe | Width |
+|---|---:|
+| `word_index` | 3 |
+| `packet_valid` | 1 |
+| `packet_error` | 1 |
+| `error_flags` | 8 |
+| `magic` | 32 |
+| `version` | 8 |
+| `message_type` | 8 |
+| `side` | 8 |
+| `reserved_field` | 8 |
+| `seq` | 32 |
+| `timestamp_ns` | 64 |
+| `instrument_id` | 32 |
+| `price_ticks` | 32 |
+| `qntity` | 32 |
+
+All probes were configured as data-and-trigger probes with one comparator each. This supports triggers such as:
+
+```text
+packet_valid == 1
+```
+
+and:
+
+```text
+packet_error == 1
+```
+
+### 4.8.7 Build outputs
+
+After design validation, Vivado synthesis, implementation, timing analysis, and bitstream generation completed. The updated hardware files were retained with the `_2` suffix so the original per-packet version remained available:
+
+```text
+phase4_packet_parser_2.bit
+phase4_packet_parser_2.hwh
+phase4_packet_parser_2.ltx
+```
+
+Their roles are:
+
+| File | Purpose |
+|---|---|
+| `.bit` | Programs the Zynq programmable logic |
+| `.hwh` | Allows PYNQ to discover the DMA and address metadata |
+| `.ltx` | Maps the implemented ILA probes in Vivado Hardware Manager |
+
+The `.bit` and `.hwh` files were copied to:
+
+```text
+/home/xilinx/PYNQ_HFT/phase4_packet_parser/
+```
+
+The `.ltx` file remained on the Windows host for ILA debugging.
+
+### 4.8.8 Integration result
+
+Phase 4.8 passed when:
+
+- The parser replaced the Phase 3 pass-through block.
+- AXI interfaces connected without width or protocol errors.
+- Parser outputs connected to the ILA.
+- Vivado block-design validation succeeded.
+- Synthesis and implementation completed.
+- A matching `.bit`, `.hwh`, and `.ltx` set was produced.
+
+## 4.9 PYNQ Hardware Testing
+
+### 4.9.1 Test objectives
+
+Hardware testing verified:
+
+1. The overlay loads and exposes `axi_dma_0`.
+2. Valid quote, stream-start, and stream-end packets traverse the FPGA.
+3. S2MM output remains byte-identical to MM2S input.
+4. Decoded fields match the HFT1 packet.
+5. Invalid packets produce the expected error flag.
+6. Several packets can share one DMA transfer.
+7. Batched operation sustains 10,000 packets/s.
+8. Live UDP payloads follow the complete PS-to-PL-to-PS path.
+
+### 4.9.2 Basic hardware functional test
+
+The first PYNQ test loaded the overlay, allocated physically contiguous transmit and receive buffers, and submitted one packet per DMA transaction.
+
+S2MM was always started before MM2S:
+
+```python
+dma.recvchannel.transfer(rx_buffer)
+dma.sendchannel.transfer(tx_buffer)
+
+dma.sendchannel.wait()
+dma.recvchannel.wait()
+```
+
+The returned DDR bytes were compared against the original packet.
+
+The test passed for all supported message types:
+
+```text
+Quote update: PASS
+Stream start: PASS
+Stream end: PASS
+
+Phase 4.9 DMA byte comparison: PASS
+```
+
+![PYNQ functional DMA parser test](images/phase4_9_functional_dma_pass.png)
+
+This proved that adding field extraction and validation did not corrupt the forwarded AXI stream.
+
+### 4.9.3 Valid-packet ILA capture
+
+The ILA was armed on `packet_valid == 1`. The captured quote-update packet decoded to:
+
+| Field | Captured value |
+|---|---:|
+| Magic | `0x48465431` (`HFT1`) |
+| Version | `0x01` |
+| Message type | `0x01` |
+| Side | `0x01` |
+| Reserved | `0x00` |
+| Sequence | `0x01020304` |
+| Timestamp | `0x1112131415161718` |
+| Instrument ID | `0x21222324` |
+| Price ticks | `0x31323334` |
+| Quantity | `0x41424344` |
+| Error flags | `0x00` |
+
+![Valid HFT1 packet decoded by the hardware parser](images/phase4_9_valid_packet_ila.png)
+
+The capture confirms that the byte-lane reversal identified in Phase 4.1 is corrected inside the parser before fields are exposed.
+
+### 4.9.4 Invalid-magic ILA capture
+
+The invalid-packet test replaced `HFT1` with `BAD!`. The ILA was armed on `packet_error == 1`.
+
+At packet completion:
+
+- `packet_error` pulsed.
+- `packet_valid` remained low.
+- `error_flags` became `0x01`.
+- Error bit 0 correctly identified the magic-field failure.
+- The parser returned to `word_index == 0` for the next packet.
+
+![Invalid magic packet producing error flag 0x01](images/phase4_9_invalid_magic_ila.png)
+
+This demonstrated that malformed application packets are classified without changing the forwarded data.
+
+### 4.9.5 Initial one-packet-per-DMA throughput result
+
+The first 10,000-packet stress test issued one 32-byte DMA transaction per packet.
+
+| Metric | Result |
+|---|---:|
+| Packets requested | 10,000 |
+| Packets completed | 10,000 |
+| Mismatched packets | 0 |
+| DMA errors | 0 |
+| Completion duration | 15.497983 s |
+| Completion rate | 645.2 packets/s |
+| 10,000 pps check | FAIL |
+
+Data integrity passed, proving that the RTL remained correct. The low rate was caused by Python and simple-mode DMA transaction overhead:
+
+```text
+10,000 packets
+-> 10,000 S2MM starts
+-> 10,000 MM2S starts
+-> 20,000 DMA waits
+```
+
+The FPGA parser was not the throughput bottleneck.
+
+### 4.9.6 Batch-mode simulation
+
+The batch-mode testbench instantiated:
+
+```systemverilog
+hft_packet_parser #(
+    .TLAST_PER_PACKET(1'b0)
+) dut (
+    // Port mappings
+);
+```
+
+It sent three contiguous packets:
+
+| Packet | Message | AXI beats | `TLAST` |
+|---|---|---:|---|
+| 0 | Quote update | 0–7 | Low |
+| 1 | Stream start | 8–15 | Low |
+| 2 | Stream end | 16–23 | High only on beat 23 |
+
+The testbench also introduced downstream stalls and checked:
+
+- Input stability during backpressure.
+- Output stability during backpressure.
+- Byte-exact forwarding of all 24 beats.
+- One `packet_valid` pulse per eight-beat packet.
+- No `packet_error` pulse.
+- `error_flags == 0`.
+- `word_index` wrapping after every eight accepted beats.
+
+Simulation result:
+
+```text
+Phase 4.9 batch-mode parser test: PASS
+Input beats accepted:       24
+Output beats accepted:      24
+Packets completed:          3
+Input backpressure cycles:  5
+Output backpressure cycles: 5
+TLAST assertions:           1 (final batch beat only)
+```
+
+![Batch-mode simulation with three packets and backpressure](images/phase4_9_batch_mode_simulation.png)
+
+The existing complete regression also continued to pass in its default `TLAST_PER_PACKET=1` mode:
+
+```text
+Phase 4.7 complete parser regression: PASS
+Input beats accepted:       147
+Output beats accepted:      147
+Completed packets:          18
+Input backpressure cycles:  10
+Output backpressure cycles: 10
+```
+
+### 4.9.7 Batched 10,000 packets/s hardware test
+
+The optimized test combined up to 256 packets into each DMA transaction:
+
+```text
+256 packets × 32 bytes = 8,192 bytes per full DMA batch
+```
+
+For 10,000 packets:
+
+```text
+39 full batches
++ 1 final 16-packet batch
+= 40 DMA transactions
+```
+
+The final transaction contained the remaining 16 packets and transferred only:
+
+```text
+16 × 32 bytes = 512 bytes
+```
+
+The hardware test produced:
+
+| Metric | Result |
+|---|---:|
+| Target packet rate | 10,000 packets/s |
+| Packets requested | 10,000 |
+| Packets completed | 10,000 |
+| DMA batches completed | 40/40 |
+| Mismatched packets | 0 |
+| DMA errors | 0 |
+| Batch deadline misses | 0 |
+| Maximum lateness | 8.8 µs |
+| Timed duration | 0.999617 s |
+| Completion rate | 10,003.8 packets/s |
+| Data-integrity check | PASS |
+| 10,000 pps rate check | PASS |
+| Overall result | PASS |
+
+Batching reduced the number of DMA transactions from 10,000 to 40, a 250-fold reduction. The measured packet rate increased from 645.2 packets/s to 10,003.8 packets/s while preserving zero-error byte comparison.
+
+This is a sustained average packet rate. Packets traverse the AXI stream in short DMA batches rather than being individually separated by 100 µs inside the programmable logic.
+
+### 4.9.8 Live UDP-to-FPGA integration
+
+The final functional test exercised the complete live path:
+
+```text
+Laptop UDP sender
+-> PYNQ PS Ethernet and Linux UDP socket
+-> UDP payload in PS memory
+-> physically contiguous PS DDR transmit buffer
+-> AXI DMA MM2S
+-> HFT1 FPGA packet parser
+-> AXI4-Stream FIFO
+-> AXI DMA S2MM
+-> PS DDR receive buffer
+-> byte-for-byte Python verification
+```
+
+The laptop sent a deterministic two-second HFT1 stream at 1,000 packets/s. The stream contained:
+
+- One `STREAM_START` packet.
+- 1,998 quote updates.
+- One `STREAM_END` packet.
+
+The PYNQ receiver accumulated up to 256 UDP payloads per DMA transaction and flushed the final partial batch when `STREAM_END` arrived.
+
+| Metric | Result |
+|---|---:|
+| Announced packet rate | 1,000 packets/s |
+| Announced duration | 2,000 ms |
+| Announced packets | 2,000 |
+| UDP packets received | 2,000 |
+| Protocol-valid packets | 2,000 |
+| Invalid packets | 0 |
+| Malformed lengths | 0 |
+| Missing sequences | 0 |
+| Duplicate sequences | 0 |
+| Out-of-order sequences | 0 |
+| DMA batches completed | 8 |
+| Packets passed by DMA | 2,000 |
+| DMA mismatches | 0 |
+| DMA errors | 0 |
+| Observed receive rate | 1,001.0 packets/s |
+| Planned-count check | PASS |
+| DMA byte comparison | PASS |
+| Live end-to-end result | PASS |
+
+![Live UDP to DDR to FPGA parser to DDR result](images/phase4_9_live_udp_dma_pass.png)
+
+This test proves that real network payloads, rather than only pre-generated DDR data, successfully traverse the complete parser datapath.
+
+### 4.9.9 Running the hardware tests
+
+The PYNQ programs the FPGA by loading the matching `.bit` and `.hwh` pair:
+
+```python
+BITSTREAM_PATH = (
+    "/home/xilinx/PYNQ_HFT/phase4_packet_parser/"
+    "phase4_packet_parser_2.bit"
+)
+
+overlay = Overlay(BITSTREAM_PATH)
+```
+
+Run the basic functional test:
+
+```bash
+sudo -E /usr/local/share/pynq-venv/bin/python3 \
+    /home/xilinx/PYNQ_HFT/phase4_packet_parser/phase4_9_parser_test.py
+```
+
+Run the batched 10,000 packets/s test:
+
+```bash
+sudo -E /usr/local/share/pynq-venv/bin/python3 \
+    /home/xilinx/PYNQ_HFT/phase4_packet_parser/phase4_9_10k_batch_test.py
+```
+
+Run the live receiver on PYNQ:
+
+```bash
+sudo -E /usr/local/share/pynq-venv/bin/python3 \
+    /home/xilinx/PYNQ_HFT/phase4_packet_parser/phase4_9_live_udp_dma_test.py
+```
+
+After the PYNQ prints `Receiver ready`, run the sender on the Windows laptop:
+
+```powershell
+py "C:\root_pqnq\PYNQ_HFT\phase 4\phase4_9_live_udp_sender.py" --pps 1000 --duration 2
+```
+
+### 4.9.10 Hardware test files
+
+The Phase 4.9 test set contains:
+
+```text
+hft_packet_parser_batch_tb.sv
+phase4_9_parser_test.py
+phase4_9_10k_batch_test.py
+phase4_9_live_udp_dma_test.py
+phase4_9_live_udp_sender.py
+phase4_packet_parser_2.bit
+phase4_packet_parser_2.hwh
+phase4_packet_parser_2.ltx
+```
+
+### 4.9.11 Completion status
+
+Phase 4.8 and Phase 4.9 are complete:
+
+- Vivado block-design integration passed.
+- The parser maintained byte-exact AXI forwarding.
+- Valid HFT1 packets decoded correctly in hardware.
+- Invalid magic generated the correct error flag.
+- Single-packet and batch-mode simulations passed.
+- The original regression remained compatible.
+- Batched DMA sustained more than 10,000 packets/s.
+- All 10,000 packets returned without corruption.
+- Live UDP payloads traversed PS DDR, the DMA path, and the FPGA parser.
+- No live packets were missing, duplicated, malformed, or reordered.
+
+The verified parser is ready to feed later FPGA stages such as instrument filtering, sequence tracking, order-book state, and trading-signal logic.
