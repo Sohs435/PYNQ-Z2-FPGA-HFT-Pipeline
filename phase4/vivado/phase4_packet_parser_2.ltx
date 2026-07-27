@@ -1,0 +1,1083 @@
+{
+    "ltx_root": {
+        "version": 4,
+        "minor": 0,
+        "ltx_data": [
+            {
+                "name": "EDA_PROBESET",
+                "active": true,
+                "debug_cores": [
+                    {
+                        "type": "XSDB_V3",
+                        "name": "dbg_hub",
+                        "spec": "labtools_xsdbm_v3",
+                        "clk_input_freq_hz": "50000000"
+                    },
+                    {
+                        "type": "ILA_V3",
+                        "name": "phase3_axi_design_i/ila_0",
+                        "spec": "labtools_ila_v6",
+                        "ipName": "ila",
+                        "core_location": {
+                            "user_chain": 1,
+                            "slave_index": 0,
+                            "bscan_switch_index": 0
+                        },
+                        "uuid": "49FEF0AA599F583FBC90EAEFA7D29414",
+                        "pins": [
+                            {
+                                "name": "probe0",
+                                "id": 0,
+                                "type": "DATA_TRIGGER",
+                                "direction": "IN",
+                                "isVector": true,
+                                "leftIndex": 0,
+                                "rightIndex": 2,
+                                "portIndex": 0,
+                                "nets": [
+                                    {
+                                        "name": "phase3_axi_design_i/hft_packet_parser_wr_0_word_index",
+                                        "isBus": true,
+                                        "subnets": [
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_word_index[2]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_word_index[1]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_word_index[0]"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe1",
+                                "id": 1,
+                                "type": "DATA_TRIGGER",
+                                "direction": "IN",
+                                "isVector": false,
+                                "leftIndex": 0,
+                                "rightIndex": 0,
+                                "portIndex": 1,
+                                "nets": [
+                                    {
+                                        "name": "phase3_axi_design_i/hft_packet_parser_wr_0_packet_valid",
+                                        "isBus": false
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe2",
+                                "id": 2,
+                                "type": "DATA_TRIGGER",
+                                "direction": "IN",
+                                "isVector": false,
+                                "leftIndex": 0,
+                                "rightIndex": 0,
+                                "portIndex": 2,
+                                "nets": [
+                                    {
+                                        "name": "phase3_axi_design_i/hft_packet_parser_wr_0_packet_error",
+                                        "isBus": false
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe3",
+                                "id": 3,
+                                "type": "DATA_TRIGGER",
+                                "direction": "IN",
+                                "isVector": true,
+                                "leftIndex": 0,
+                                "rightIndex": 7,
+                                "portIndex": 3,
+                                "nets": [
+                                    {
+                                        "name": "phase3_axi_design_i/hft_packet_parser_wr_0_error_flags",
+                                        "isBus": true,
+                                        "subnets": [
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_error_flags[7]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_error_flags[6]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_error_flags[5]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_error_flags[4]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_error_flags[3]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_error_flags[2]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_error_flags[1]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_error_flags[0]"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe4",
+                                "id": 4,
+                                "type": "DATA_TRIGGER",
+                                "direction": "IN",
+                                "isVector": true,
+                                "leftIndex": 0,
+                                "rightIndex": 31,
+                                "portIndex": 4,
+                                "nets": [
+                                    {
+                                        "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic",
+                                        "isBus": true,
+                                        "subnets": [
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[31]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[30]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[29]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[28]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[27]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[26]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[25]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[24]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[23]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[22]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[21]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[20]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[19]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[18]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[17]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[16]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[15]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[14]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[13]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[12]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[11]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[10]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[9]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[8]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[7]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[6]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[5]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[4]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[3]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[2]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[1]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_magic[0]"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe5",
+                                "id": 5,
+                                "type": "DATA_TRIGGER",
+                                "direction": "IN",
+                                "isVector": true,
+                                "leftIndex": 0,
+                                "rightIndex": 7,
+                                "portIndex": 5,
+                                "nets": [
+                                    {
+                                        "name": "phase3_axi_design_i/hft_packet_parser_wr_0_message_type",
+                                        "isBus": true,
+                                        "subnets": [
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_message_type[7]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_message_type[6]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_message_type[5]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_message_type[4]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_message_type[3]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_message_type[2]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_message_type[1]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_message_type[0]"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe6",
+                                "id": 6,
+                                "type": "DATA_TRIGGER",
+                                "direction": "IN",
+                                "isVector": true,
+                                "leftIndex": 0,
+                                "rightIndex": 7,
+                                "portIndex": 6,
+                                "nets": [
+                                    {
+                                        "name": "phase3_axi_design_i/hft_packet_parser_wr_0_side",
+                                        "isBus": true,
+                                        "subnets": [
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_side[7]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_side[6]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_side[5]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_side[4]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_side[3]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_side[2]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_side[1]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_side[0]"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe7",
+                                "id": 7,
+                                "type": "DATA_TRIGGER",
+                                "direction": "IN",
+                                "isVector": true,
+                                "leftIndex": 0,
+                                "rightIndex": 31,
+                                "portIndex": 7,
+                                "nets": [
+                                    {
+                                        "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq",
+                                        "isBus": true,
+                                        "subnets": [
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[31]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[30]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[29]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[28]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[27]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[26]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[25]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[24]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[23]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[22]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[21]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[20]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[19]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[18]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[17]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[16]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[15]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[14]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[13]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[12]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[11]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[10]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[9]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[8]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[7]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[6]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[5]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[4]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[3]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[2]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[1]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_seq[0]"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe8",
+                                "id": 8,
+                                "type": "DATA_TRIGGER",
+                                "direction": "IN",
+                                "isVector": true,
+                                "leftIndex": 0,
+                                "rightIndex": 31,
+                                "portIndex": 8,
+                                "nets": [
+                                    {
+                                        "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id",
+                                        "isBus": true,
+                                        "subnets": [
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[31]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[30]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[29]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[28]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[27]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[26]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[25]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[24]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[23]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[22]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[21]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[20]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[19]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[18]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[17]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[16]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[15]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[14]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[13]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[12]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[11]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[10]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[9]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[8]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[7]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[6]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[5]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[4]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[3]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[2]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[1]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_instrument_id[0]"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe9",
+                                "id": 9,
+                                "type": "DATA_TRIGGER",
+                                "direction": "IN",
+                                "isVector": true,
+                                "leftIndex": 0,
+                                "rightIndex": 31,
+                                "portIndex": 9,
+                                "nets": [
+                                    {
+                                        "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks",
+                                        "isBus": true,
+                                        "subnets": [
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[31]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[30]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[29]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[28]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[27]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[26]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[25]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[24]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[23]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[22]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[21]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[20]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[19]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[18]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[17]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[16]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[15]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[14]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[13]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[12]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[11]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[10]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[9]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[8]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[7]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[6]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[5]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[4]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[3]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[2]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[1]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_price_ticks[0]"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe10",
+                                "id": 10,
+                                "type": "DATA_TRIGGER",
+                                "direction": "IN",
+                                "isVector": true,
+                                "leftIndex": 0,
+                                "rightIndex": 31,
+                                "portIndex": 10,
+                                "nets": [
+                                    {
+                                        "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity",
+                                        "isBus": true,
+                                        "subnets": [
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[31]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[30]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[29]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[28]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[27]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[26]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[25]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[24]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[23]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[22]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[21]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[20]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[19]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[18]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[17]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[16]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[15]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[14]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[13]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[12]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[11]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[10]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[9]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[8]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[7]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[6]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[5]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[4]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[3]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[2]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[1]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_qntity[0]"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe11",
+                                "id": 11,
+                                "type": "DATA_TRIGGER",
+                                "direction": "IN",
+                                "isVector": true,
+                                "leftIndex": 0,
+                                "rightIndex": 63,
+                                "portIndex": 11,
+                                "nets": [
+                                    {
+                                        "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns",
+                                        "isBus": true,
+                                        "subnets": [
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[63]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[62]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[61]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[60]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[59]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[58]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[57]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[56]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[55]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[54]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[53]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[52]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[51]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[50]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[49]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[48]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[47]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[46]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[45]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[44]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[43]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[42]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[41]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[40]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[39]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[38]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[37]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[36]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[35]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[34]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[33]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[32]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[31]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[30]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[29]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[28]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[27]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[26]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[25]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[24]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[23]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[22]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[21]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[20]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[19]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[18]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[17]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[16]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[15]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[14]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[13]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[12]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[11]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[10]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[9]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[8]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[7]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[6]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[5]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[4]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[3]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[2]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[1]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_timestamp_ns[0]"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe12",
+                                "id": 12,
+                                "type": "DATA_TRIGGER",
+                                "direction": "IN",
+                                "isVector": true,
+                                "leftIndex": 0,
+                                "rightIndex": 7,
+                                "portIndex": 12,
+                                "nets": [
+                                    {
+                                        "name": "phase3_axi_design_i/hft_packet_parser_wr_0_version",
+                                        "isBus": true,
+                                        "subnets": [
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_version[7]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_version[6]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_version[5]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_version[4]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_version[3]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_version[2]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_version[1]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_version[0]"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            {
+                                "name": "probe13",
+                                "id": 13,
+                                "type": "DATA_TRIGGER",
+                                "direction": "IN",
+                                "isVector": true,
+                                "leftIndex": 0,
+                                "rightIndex": 7,
+                                "portIndex": 13,
+                                "nets": [
+                                    {
+                                        "name": "phase3_axi_design_i/hft_packet_parser_wr_0_reserved_field",
+                                        "isBus": true,
+                                        "subnets": [
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_reserved_field[7]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_reserved_field[6]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_reserved_field[5]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_reserved_field[4]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_reserved_field[3]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_reserved_field[2]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_reserved_field[1]"
+                                            },
+                                            {
+                                                "name": "phase3_axi_design_i/hft_packet_parser_wr_0_reserved_field[0]"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+}
