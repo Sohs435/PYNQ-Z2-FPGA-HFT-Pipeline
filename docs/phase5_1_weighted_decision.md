@@ -45,39 +45,25 @@ often the future feature engine asserts `feature_valid`.
 
 The directional score is calculated as:
 
-$$
-\text{direction score}
-=
-W_t \times \text{trend}
-+
-W_i \times \text{quantity imbalance}
-$$
+```text
+direction_score = (TREND_WEIGHT * trend) + (IMBALANCE_WEIGHT * quantity_imbalance)
+```
 
 The required score is calculated as:
 
-$$
-\text{required score}
-=
-T_{\text{base}}
-+
-W_s \times \text{spread}
-$$
+```text
+required_score = BASE_THRESHOLD + (SPREAD_WEIGHT * spread)
+```
 
 The decision rules are:
 
-$$
-\text{BUY if direction score} > \text{required score}
-$$
+```text
+direction_score >  required_score -> BUY
+direction_score < -required_score -> SELL
+otherwise -> HOLD
+```
 
-$$
-\text{SELL if direction score} < -\text{required score}
-$$
-
-All other scores produce `HOLD`.
-
-The spread is used to increase the evidence required to trade. A wider spread
-therefore makes both `BUY` and `SELL` decisions less likely instead of creating
-an artificial directional bias.
+The spread increases the confidence required to trade. A wider spread therefore makes both `BUY` and `SELL` decisions less likely without creating an artificial directional bias.
 
 ### Initial model constants
 
