@@ -718,3 +718,817 @@ The verified block:
 
 The next subphase will provide validated, per-instrument market state to the
 feature-generation pipeline that eventually drives this decision block.
+
+## Phase 5.2 — Packet Filtering and Instrument Mapping
+
+### Purpose
+
+The packet parser validates the packet format, but the trading pipeline should only receive supported quote updates from an active stream. The `hft_packet_filter` module therefore:
+
+- Interprets `STREAM_START`, `STREAM_END`, and `QUOTE_UPDATE` messages.
+- Tracks whether the market-data stream is active.
+- Rejects packets marked with `packet_error`.
+- Rejects quote updates before stream start or after stream end.
+- Maps five external instrument IDs to internal slots `0` through `4`.
+- Forwards accepted quote fields with a one-cycle `quote_valid` pulse.
+- Pulses `unknown_instrument` for a quote containing an unsupported instrument ID.
+
+### Interface
+
+#### Inputs
+
+| Signal | Width | Purpose |
+| --- | ---: | --- |
+| `packet_valid` | 1 | Indicates that the parser completed a packet |
+| `packet_error` | 1 | Indicates that packet validation failed |
+| `message_type` | 8 | Quote update, stream start, or stream end |
+| `side` | 8 | Bid or ask side |
+| `seq` | 32 | Global packet sequence number |
+| `timestamp_ns` | 64 | Packet timestamp |
+| `instrument_id` | 32 | External instrument identifier |
+| `price_ticks` | 32 | Quote price represented in integer ticks |
+| `qntity` | 32 | Quote quantity |
+
+#### Outputs
+
+| Signal | Width | Purpose |
+| --- | ---: | --- |
+| `quote_valid` | 1 | One-cycle pulse for an accepted quote |
+| `instrument_slot` | 3 | Internal instrument slot from `0` to `4` |
+| `quote_side` | 8 | Accepted quote side |
+| `quote_seq` | 32 | Accepted sequence number |
+| `quote_timestamp_ns` | 64 | Accepted timestamp |
+| `quote_price_ticks` | 32 | Accepted price |
+| `quote_quantity` | 32 | Accepted quantity |
+| `stream_active` | 1 | Remains high between stream start and stream end |
+| `stream_start_pulse` | 1 | One-cycle pulse when a valid stream start is received |
+| `stream_end_pulse` | 1 | One-cycle pulse when a valid stream end is received |
+| `unknown_instrument` | 1 | One-cycle pulse for an unsupported quote instrument |
+
+### Instrument lookup
+
+```systemverilog
+always_comb begin
+    instrument_found = 1'b1;
+    matched_slot = 3'd0;
+
+    case (instrument_id)
+        INSTRUMENT_ID_0: matched_slot = 3'd0;
+        INSTRUMENT_ID_1: matched_slot = 3'd1;
+        INSTRUMENT_ID_2: matched_slot = 3'd2;
+        INSTRUMENT_ID_3: matched_slot = 3'd3;
+        INSTRUMENT_ID_4: matched_slot = 3'd4;
+
+        default: begin
+            instrument_found = 1'b0;
+            matched_slot = 3'd0;
+        end
+    endcase
+end
+```
+
+This combinational lookup converts an external 32-bit identifier into a smaller internal slot. The later modules use the slot as an array index, which is cheaper than repeatedly comparing complete instrument IDs.
+
+The default branch clears `instrument_found`. The value assigned to `matched_slot` in the default branch is harmless because `quote_valid` is not asserted for an unknown instrument.
+
+### Stream control and quote forwarding
+
+```systemverilog
+if (packet_valid && !packet_error) begin
+    if (message_type == MESSAGE_STREAM_START) begin
+        stream_active <= 1'b1;
+        stream_start_pulse <= 1'b1;
+    end
+    else if (message_type == MESSAGE_STREAM_END) begin
+        stream_active <= 1'b0;
+        stream_end_pulse <= 1'b1;
+    end
+    else if (
+        message_type == MESSAGE_QUOTE_UPDATE &&
+        stream_active
+    ) begin
+        if (instrument_found) begin
+            quote_valid <= 1'b1;
+            instrument_slot <= matched_slot;
+            quote_side <= side;
+            quote_seq <= seq;
+            quote_timestamp_ns <= timestamp_ns;
+            quote_price_ticks <= price_ticks;
+            quote_quantity <= qntity;
+        end
+        else begin
+            unknown_instrument <= 1'b1;
+        end
+    end
+end
+```
+
+The outer condition blocks invalid or erroneous parser results. A valid `STREAM_START` sets `stream_active`, and that state remains high until a valid `STREAM_END` is received.
+
+An erroneous packet can therefore have `packet_valid` and `packet_error` high together. That means the parser completed the packet but detected a validation failure. The filter rejects it because `!packet_error` is false. Rejecting one packet does not end the stream.
+
+The pulse outputs are assigned low at the start of every normal clock cycle. They only remain high for the cycle in which their corresponding event is accepted.
+
+### Verification
+
+The self-checking testbench verified:
+
+- Reset behaviour.
+- Rejection of quotes before `STREAM_START`.
+- Mapping of instrument IDs `1` through `5` to slots `0` through `4`.
+- Bid and ask forwarding.
+- Sequence, timestamp, price, and quantity forwarding.
+- Unknown-instrument rejection.
+- Erroneous-packet rejection.
+- Back-to-back quote forwarding.
+- Stream-end handling.
+- A second stream start.
+- Reset while the stream was active.
+
+```text
+PASS: unknown instrument rejected
+PASS: erroneous packet ignored
+PASS: back-to-back quote forwarding
+PASS: STREAM_END accepted
+PASS: quote after STREAM_END ignored
+PASS: active-stream reset
+All hft_packet_filter tests passed.
+```
+
+![Phase 5.2 packet filter waveform](images/phase5_2_packet_filter_waveform.png)
+
+*Figure 5.2.1 — Packet filtering, stream-state control, instrument mapping, and accepted quote forwarding.*
+
+---
+
+## Phase 5.3 — Global Sequence Tracking
+
+### Purpose
+
+The `hft_sequence_tracker` module checks the global sequence number attached to each accepted quote. It prevents duplicate and older packets from modifying the instrument books and records any gaps in the feed.
+
+The implemented policy is:
+
+| Condition | Classification | Forward quote? | Recovery action |
+| --- | --- | ---: | --- |
+| First quote | Initialization | Yes | Set the next expected sequence |
+| `quote_seq == expected_seq` | Correct sequence | Yes | Advance normally |
+| `quote_seq == last_seq` | Duplicate | No | Retain the current expectation |
+| `quote_seq > expected_seq` | Missing packet gap | Yes | Count the gap and resynchronise |
+| Older sequence | Out of order | No | Retain the current expectation |
+
+The sequence is global across all instruments. It is therefore intentionally not indexed by `instrument_slot`.
+
+### Initialization
+
+```systemverilog
+if (!sequence_initialized) begin
+    sequence_initialized <= 1'b1;
+    last_seq <= quote_seq;
+    expected_seq <= quote_seq + 32'd1;
+    tracked_quote_valid <= 1'b1;
+end
+```
+
+The first accepted quote establishes the sequence baseline. It is forwarded because there is no earlier sequence against which it can be checked.
+
+`expected_seq` becomes one greater than the first sequence. The following quote can then be classified using a direct comparison.
+
+### Correct sequence
+
+```systemverilog
+else if (quote_seq == expected_seq) begin
+    last_seq <= quote_seq;
+    expected_seq <= quote_seq + 32'd1;
+    tracked_quote_valid <= 1'b1;
+end
+```
+
+A correctly sequenced quote advances both `last_seq` and `expected_seq`. The quote and all of its metadata are forwarded to the instrument-book stage.
+
+### Missing-packet detection
+
+```systemverilog
+else if (quote_seq > expected_seq) begin
+    sequence_error <= 1'b1;
+    missing_packet <= 1'b1;
+    missing_count <= missing_count + (quote_seq - expected_seq);
+
+    last_seq <= quote_seq;
+    expected_seq <= quote_seq + 32'd1;
+    tracked_quote_valid <= 1'b1;
+end
+```
+
+When the new sequence is greater than expected, one or more packets are missing. The gap size is:
+
+```text
+missing amount = received sequence - expected sequence
+```
+
+The received quote is still forwarded. This allows the pipeline to continue operating while exposing the data-loss condition through flags and counters.
+
+The tracker resynchronises to the received sequence so that subsequent correct packets can be accepted normally.
+
+### Duplicate and out-of-order rejection
+
+```systemverilog
+else if (quote_seq == last_seq) begin
+    sequence_error <= 1'b1;
+    duplicate_packet <= 1'b1;
+    duplicate_count <= duplicate_count + 32'd1;
+end
+else begin
+    sequence_error <= 1'b1;
+    out_of_order_packet <= 1'b1;
+    out_of_order_count <= out_of_order_count + 32'd1;
+end
+```
+
+Duplicate and older packets are not forwarded because applying them could repeat or reverse a book update.
+
+The corresponding one-cycle flag identifies the error type, while the counter provides a cumulative stream statistic.
+
+### Stream handling
+
+`stream_start_pulse` clears the sequence baseline and all three counters. The first quote in the new stream therefore establishes a fresh sequence.
+
+`stream_end_pulse` clears `sequence_initialized` and suppresses tracked output. No old sequence expectation is carried into the following stream.
+
+### Verification
+
+The self-checking testbench verified:
+
+- First-sequence initialization.
+- Correct consecutive sequences.
+- Missing-packet detection and gap counting.
+- Duplicate rejection.
+- Out-of-order rejection.
+- Recovery after each error.
+- Back-to-back quote forwarding.
+- Stream-end handling.
+- Counter clearing on the next stream.
+- Reset while active.
+
+```text
+PASS: first sequence initialized
+PASS: correct sequence accepted
+PASS: missing sequences detected
+PASS: duplicate sequence rejected
+PASS: out-of-order sequence rejected
+PASS: tracker recovered after errors
+PASS: back-to-back quotes accepted
+PASS: active reset
+All hft_sequence_tracker tests passed.
+```
+
+![Phase 5.3 sequence tracker waveform](images/phase5_3_sequence_tracker_waveform.png)
+
+*Figure 5.3.1 — Global sequence initialization, gap detection, duplicate rejection, out-of-order rejection, recovery, and stream reset.*
+
+---
+
+## Phase 5.4 — Per-Instrument Top-of-Book State
+
+### Purpose
+
+The `hft_instrument_book` module converts individual bid or ask quote updates into a complete top-of-book snapshot for the selected instrument.
+
+For each of the five slots, the module stores:
+
+- Latest bid price.
+- Latest bid quantity.
+- Latest ask price.
+- Latest ask quantity.
+- Whether a bid has been initialized.
+- Whether an ask has been initialized.
+
+One shared module services all five instruments. A separate module instance is not required for every company because the incoming `instrument_slot` selects the relevant state array.
+
+### Per-instrument storage
+
+```systemverilog
+logic [31:0] bid_price [0:4];
+logic [31:0] bid_quantity [0:4];
+logic [31:0] ask_price [0:4];
+logic [31:0] ask_quantity [0:4];
+
+logic bid_initialized [0:4];
+logic ask_initialized [0:4];
+```
+
+The first array index is the instrument slot. Updating slot 2, for example, does not change the stored book for slots 0, 1, 3, or 4.
+
+The initialization flags distinguish a genuine zero value from a side of the book that has never been received.
+
+### Bid update
+
+```systemverilog
+if (tracked_side == SIDE_BID) begin
+    bid_price[tracked_instrument_slot] <= tracked_price_ticks;
+    bid_quantity[tracked_instrument_slot] <= tracked_quantity;
+    bid_initialized[tracked_instrument_slot] <= 1'b1;
+
+    book_bid_price <= tracked_price_ticks;
+    book_bid_quantity <= tracked_quantity;
+    book_ask_price <= ask_price[tracked_instrument_slot];
+    book_ask_quantity <= ask_quantity[tracked_instrument_slot];
+end
+```
+
+A bid update replaces only the selected instrument's bid. The previously stored ask remains unchanged and is forwarded alongside the incoming bid.
+
+The outputs use `tracked_price_ticks` and `tracked_quantity` directly. This avoids outputting the previous bid value because non-blocking assignments do not update the storage array until the clocked block finishes.
+
+### Ask update
+
+```systemverilog
+else if (tracked_side == SIDE_ASK) begin
+    ask_price[tracked_instrument_slot] <= tracked_price_ticks;
+    ask_quantity[tracked_instrument_slot] <= tracked_quantity;
+    ask_initialized[tracked_instrument_slot] <= 1'b1;
+
+    book_bid_price <= bid_price[tracked_instrument_slot];
+    book_bid_quantity <= bid_quantity[tracked_instrument_slot];
+    book_ask_price <= tracked_price_ticks;
+    book_ask_quantity <= tracked_quantity;
+end
+```
+
+The ask path mirrors the bid path. It preserves the existing bid and inserts the incoming ask directly into the output snapshot.
+
+### Book validity
+
+The book becomes valid only after both sides have been initialized:
+
+```text
+book valid = bid initialized AND ask initialized
+```
+
+On the update that initializes the missing side, the incoming quote must be included in this calculation. A first bid followed by a first ask therefore produces a valid book immediately on the ask update.
+
+An incomplete book may still assert `book_update_valid`, but `book_valid` remains low. This allows downstream logic to distinguish “an update occurred” from “a complete book is available.”
+
+### Crossed-book detection
+
+A book is crossed when:
+
+```text
+ask price < bid price
+```
+
+An equal bid and ask is locked rather than crossed:
+
+```text
+ask price == bid price -> crossed_book = 0
+```
+
+Like book validity, the comparison must use the incoming value on the side currently being updated and the stored value on the opposite side.
+
+The feature engine rejects crossed books using:
+
+```systemverilog
+book_update_valid &&
+book_valid &&
+!crossed_book
+```
+
+### Verification
+
+The self-checking testbench verified:
+
+- Stream-start book clearing.
+- Bid-first initialization.
+- Ask-first initialization.
+- Preservation of the opposite side.
+- Independent books for different slots.
+- Crossed-book detection.
+- Equal bid and ask not being classified as crossed.
+- Invalid slot rejection.
+- Invalid side rejection.
+- Back-to-back book updates.
+- Stream-end output suppression.
+- No state reuse in a second stream.
+- Reset while active.
+
+```text
+PASS: first ask completes slot 0 book
+PASS: bid update preserved previous ask
+PASS: ask update preserved previous bid
+PASS: ask-first initialization works
+PASS: crossed book detected
+PASS: equal bid and ask are not crossed
+PASS: back-to-back book updates accepted
+PASS: second stream does not reuse old book state
+All hft_instrument_book tests passed.
+```
+
+![Phase 5.4 instrument-book waveform](images/phase5_4_instrument_book_waveform.png)
+
+*Figure 5.4.1 — Independent bid/ask storage, complete-book generation, crossed-book detection, back-to-back processing, and stream clearing.*
+
+---
+
+## Phase 5.5 — Moving-Average Feature Engine
+
+### Purpose
+
+The `hft_feature_engine` transforms each eligible book snapshot into the three features required by `weighted_decision`:
+
+- Price trend.
+- Bid/ask quantity imbalance.
+- Bid/ask spread.
+
+The module is packet-event driven. It does not use a clock divider or wait for a periodic decision interval. Once an instrument has completed warm-up, each eligible book update can enter the engine immediately.
+
+### Feature equations
+
+To avoid losing half-tick midpoints, the engine stores twice the midpoint:
+
+$$
+M_2 = P_b + P_a
+$$
+
+Quantity imbalance is:
+
+$$
+I = Q_b - Q_a
+$$
+
+Spread is:
+
+$$
+S = P_a - P_b
+$$
+
+The moving-average trend is:
+
+$$
+R = \frac{\sum_{k=0}^{7} M_{2,k}}{8}
+-
+\frac{\sum_{k=0}^{31} M_{2,k}}{32}
+$$
+
+Because `M_2` is twice the true midpoint, `trend` is expressed in twice-price units. The weighted-decision constants must be calibrated for that scale.
+
+### Eligible-update gate
+
+```systemverilog
+assign process_book_update =
+    book_update_valid &&
+    book_valid &&
+    !crossed_book &&
+    (book_instrument_slot < 3'd5);
+```
+
+The module only processes a complete, non-crossed book from a supported slot. Rejected updates do not advance any FIFO, pointer, sample counter, or FSM state.
+
+### Midpoint calculation
+
+```systemverilog
+assign midpoint2 =
+    {1'b0, book_bid_price} +
+    {1'b0, book_ask_price};
+```
+
+The leading zero widens each price before addition. The 33-bit result can therefore represent the sum of two complete unsigned 32-bit prices without overflow.
+
+No divider is needed for the midpoint. The final trend retains the same factor-of-two scale.
+
+### Circular FIFO histories
+
+```systemverilog
+logic [32:0] fast_buffer [0:4][0:7];
+logic [2:0] fast_pointer [0:4];
+logic [35:0] fast_sum [0:4];
+
+logic [32:0] slow_buffer [0:4][0:31];
+logic [4:0] slow_pointer [0:4];
+logic [37:0] slow_sum [0:4];
+```
+
+Each instrument owns:
+
+- An eight-entry fast circular FIFO.
+- A 32-entry slow circular FIFO.
+- One pointer for each FIFO.
+- One running sum for each FIFO.
+
+The structure is FIFO-based for the moving-average calculations, but it is not an upstream packet queue. Samples are not delayed until a batch becomes available.
+
+Once a window is full, its sum is updated using:
+
+```text
+new sum = old sum - oldest sample + newest sample
+```
+
+The oldest location is overwritten, and the pointer advances. The pointers wrap naturally because their widths exactly match the power-of-two buffer sizes.
+
+The history arrays are not reset. During warm-up, entries are written before they are ever subtracted. Resetting only the sums, pointers, counters, and states also avoids creating a large reset network across the stored histories.
+
+### Per-instrument FSM
+
+Each instrument has an independent three-state FSM:
+
+```systemverilog
+typedef enum logic [1:0] {
+    WARMUP_FAST,
+    WARMUP_SLOW,
+    FEATURE_READY
+} feature_state_t;
+
+feature_state_t current_state [0:4];
+feature_state_t next_state [0:4];
+```
+
+| State | Samples | Fast window | Slow window | Produce feature? |
+| --- | ---: | --- | --- | ---: |
+| `WARMUP_FAST` | 1–8 | Fill | Fill | No |
+| `WARMUP_SLOW` | 9–32 | Roll | Continue filling | On sample 32 |
+| `FEATURE_READY` | 33 onward | Roll | Roll | Yes |
+
+One global FSM would be incorrect because packets for the five instruments are interleaved. Slot 0 may already be ready while slot 1 is still receiving its first few samples.
+
+### Combinational next-state logic
+
+```systemverilog
+always_comb begin
+    for (
+        state_index = 0;
+        state_index < 5;
+        state_index = state_index + 1
+    ) begin
+        next_state[state_index] = current_state[state_index];
+    end
+
+    if (process_book_update) begin
+        case (current_state[book_instrument_slot])
+            WARMUP_FAST: begin
+                if (sample_count[book_instrument_slot] == 6'd7) begin
+                    next_state[book_instrument_slot] = WARMUP_SLOW;
+                end
+            end
+
+            WARMUP_SLOW: begin
+                if (sample_count[book_instrument_slot] == 6'd31) begin
+                    next_state[book_instrument_slot] = FEATURE_READY;
+                end
+            end
+
+            FEATURE_READY: begin
+                next_state[book_instrument_slot] = FEATURE_READY;
+            end
+
+            default: begin
+                next_state[book_instrument_slot] = WARMUP_FAST;
+            end
+        endcase
+    end
+end
+```
+
+The default assignment holds every instrument in its current state. Only the slot associated with an eligible update can transition.
+
+The comparisons use the old registered sample count:
+
+- Old count `7` means the incoming update is sample 8.
+- Old count `31` means the incoming update is sample 32.
+
+The sequential block registers `current_state <= next_state` on the following rising edge.
+
+### `WARMUP_FAST` datapath
+
+```systemverilog
+WARMUP_FAST: begin
+    fast_sum[book_instrument_slot] <=
+        fast_sum[book_instrument_slot] +
+        midpoint2;
+
+    slow_sum[book_instrument_slot] <=
+        slow_sum[book_instrument_slot] +
+        midpoint2;
+
+    fast_buffer[book_instrument_slot]
+               [fast_pointer[book_instrument_slot]]
+               <= midpoint2;
+
+    slow_buffer[book_instrument_slot]
+               [slow_pointer[book_instrument_slot]]
+               <= midpoint2;
+
+    fast_pointer[book_instrument_slot] <=
+        fast_pointer[book_instrument_slot] +
+        3'd1;
+
+    slow_pointer[book_instrument_slot] <=
+        slow_pointer[book_instrument_slot] +
+        5'd1;
+
+    sample_count[book_instrument_slot] <=
+        sample_count[book_instrument_slot] +
+        6'd1;
+end
+```
+
+The first eight samples fill both histories. No subtraction occurs because neither window yet contains an old sample that should be removed.
+
+After sample 8, the fast pointer wraps to zero and the FSM enters `WARMUP_SLOW`.
+
+### `WARMUP_SLOW` datapath
+
+```systemverilog
+WARMUP_SLOW: begin
+    fast_sum[book_instrument_slot] <=
+        fast_sum[book_instrument_slot] -
+        fast_buffer[book_instrument_slot]
+                   [fast_pointer[book_instrument_slot]] +
+        midpoint2;
+
+    slow_sum[book_instrument_slot] <=
+        slow_sum[book_instrument_slot] +
+        midpoint2;
+
+    if (sample_count[book_instrument_slot] == 6'd31) begin
+        calculation_valid_s1 <= 1'b1;
+    end
+end
+```
+
+From samples 9 through 32, the fast window is already full and rolls normally. The slow window continues filling, so it only adds samples.
+
+Sample 32 completes the slow window and asserts the Stage 1 calculation-valid register.
+
+### `FEATURE_READY` datapath
+
+```systemverilog
+FEATURE_READY: begin
+    fast_sum[book_instrument_slot] <=
+        fast_sum[book_instrument_slot] -
+        fast_buffer[book_instrument_slot]
+                   [fast_pointer[book_instrument_slot]] +
+        midpoint2;
+
+    slow_sum[book_instrument_slot] <=
+        slow_sum[book_instrument_slot] -
+        slow_buffer[book_instrument_slot]
+                   [slow_pointer[book_instrument_slot]] +
+        midpoint2;
+
+    sample_count[book_instrument_slot] <= 6'd32;
+    calculation_valid_s1 <= 1'b1;
+end
+```
+
+Both windows now remove their oldest entry and add the newest midpoint. The sample count remains saturated at 32.
+
+Every eligible update asserts `calculation_valid_s1`, so the module can sustain one feature input per clock without deliberate bubbles.
+
+### Direct features
+
+```systemverilog
+quantity_imbalance_s1 <=
+    $signed({1'b0, book_bid_quantity}) -
+    $signed({1'b0, book_ask_quantity});
+
+spread_s1 <=
+    book_ask_price -
+    book_bid_price;
+```
+
+The 33-bit signed imbalance supports the complete range:
+
+```text
+-4,294,967,295 through +4,294,967,295
+```
+
+The spread remains unsigned because crossed books are rejected before this calculation.
+
+### Trend output stage
+
+```systemverilog
+trend <=
+    $signed({1'b0, fast_sum[instrument_slot_s1][35:3]}) -
+    $signed({1'b0, slow_sum[instrument_slot_s1][37:5]});
+```
+
+The window sizes are powers of two:
+
+```text
+fast average = fast sum >> 3
+slow average = slow sum >> 5
+```
+
+The leading zeros widen both positive averages before the signed subtraction. The 34-bit output can therefore represent either a positive or negative trend.
+
+The Stage 1 slot and timestamp select the same instrument whose sums were updated on the preceding clock. This preserves metadata alignment for interleaved instruments.
+
+### Latency and throughput
+
+The first feature for an instrument is produced from sample 32:
+
+```text
+Clock N:     sample 32 updates both running sums
+Clock N+1:   feature_valid asserts with the calculated result
+```
+
+After warm-up, consecutive eligible updates can enter on consecutive clocks. Their corresponding `feature_valid` pulses also appear on consecutive clocks.
+
+Packet rate and decision latency are separate:
+
+- The 20,000 packets/s target determines average workload.
+- The FPGA clock and pipeline depth determine per-packet calculation latency.
+- No asynchronous clock divider is required.
+- No request/acknowledge clock-domain handshake is required while the modules share the same clock.
+
+### Verification
+
+The self-checking testbench verified:
+
+- Reset of all five instrument states.
+- Rejection of invalid, incomplete, crossed, and unsupported-slot updates.
+- `WARMUP_FAST` for samples 1 through 8.
+- `WARMUP_SLOW` for samples 9 through 32.
+- Transition into `FEATURE_READY`.
+- The first valid feature from sample 32.
+- Correct circular-FIFO replacement.
+- Positive, negative, and zero imbalance.
+- Independent histories for multiple instruments.
+- Back-to-back feature throughput.
+- Pending-feature cancellation on stream end.
+- Complete state clearing on stream start.
+- Fresh warm-up in a second stream.
+- Reset while active.
+
+The first non-constant test produced:
+
+```text
+PASS: first valid feature slot=0 timestamp=3200
+      trend=24 imbalance=132 spread=2
+```
+
+Replacing the oldest FIFO samples with a large price change produced:
+
+```text
+PASS: rolling FIFO feature slot=0 timestamp=3300
+      trend=36 imbalance=-150 spread=2
+```
+
+The back-to-back test produced three consecutive correctly aligned outputs:
+
+```text
+PASS: back-to-back positive imbalance
+PASS: back-to-back negative imbalance
+PASS: back-to-back zero imbalance
+PASS: back-to-back pipeline drained
+```
+
+The complete result was:
+
+```text
+PASS: STREAM_END cancelled pending feature
+PASS: second stream required new warm-up
+PASS: second stream first feature slot=0 timestamp=6032
+PASS: active reset instrument 4
+All hft_feature_engine tests passed.
+```
+
+![Phase 5.5 feature-engine waveform](images/phase5_5_feature_engine_waveform.png)
+
+*Figure 5.5.1 — FSM warm-up, per-instrument histories, valid-feature pulses, calculated trend/imbalance/spread, stream restart, and active reset.*
+
+---
+
+## Phase 5.2–5.5 Completion Summary
+
+| Phase | Module | Main result | Verification |
+| --- | --- | --- | --- |
+| 5.2 | `hft_packet_filter` | Filters parser output and maps five instruments | All tests passed |
+| 5.3 | `hft_sequence_tracker` | Detects gaps, duplicates, and out-of-order packets | All tests passed |
+| 5.4 | `hft_instrument_book` | Maintains five independent bid/ask books | All tests passed |
+| 5.5 | `hft_feature_engine` | Produces trend, imbalance, and spread | All tests passed |
+
+The output interface of Phase 5.5 matches the input interface of the Phase 5.1 weighted-decision module:
+
+```systemverilog
+feature_valid
+feature_instrument_slot
+feature_timestamp_ns
+trend
+quantity_imbalance
+spread
+```
+
+The next integration step is to connect the complete Phase 5.2–5.5 chain to `weighted_decision` and verify the end-to-end path from a parsed market-data packet to a registered `BUY`, `SELL`, or `HOLD` result.
+
+### Waveform configuration note
+
+Vivado warnings stating that objects from older testbenches were not found came from opening stale `.wcfg` waveform configurations. They do not indicate functional failures.
+
+For the feature-engine simulation, avoid recursively adding the complete testbench hierarchy:
+
+```tcl
+add_wave {{/hft_feature_engine_tb}}
+```
+
+That command expands both history arrays and can create hundreds of waveform entries. Add only the module inputs, outputs, and selected state for the instrument being debugged.
+
