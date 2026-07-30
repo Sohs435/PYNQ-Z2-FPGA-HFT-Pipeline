@@ -1169,7 +1169,7 @@ R = \frac{\sum_{k=0}^{7} M_{2,k}}{8}
 \frac{\sum_{k=0}^{31} M_{2,k}}{32}
 $$
 
-Because `M_2` is twice the true midpoint, `trend` is expressed in twice-price units. The weighted-decision constants must be calibrated for that scale.
+(Latex acting up will fix) Because `M_2` is twice the true midpoint, `trend` is expressed in twice-price units. The weighted-decision constants must be calibrated for that scale.
 
 ### Eligible-update gate
 
