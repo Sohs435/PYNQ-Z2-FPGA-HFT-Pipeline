@@ -1530,3 +1530,714 @@ add_wave {{/hft_feature_engine_tb}}
 
 That command expands both history arrays and can create hundreds of waveform entries. Add only the module inputs, outputs, and selected state for the instrument being debugged.
 
+## Phase 5.6 — HFT Engine Top-Level Wrapper
+
+### Objective
+
+The objective of Phase 5.6 was to create one synthesizable top-level module that connects all Phase 5 processing stages in their required order:
+
+```text
+Parsed packet
+    -> packet filter
+    -> sequence tracker
+    -> instrument book
+    -> feature engine
+    -> weighted decision
+    -> HOLD / BUY / SELL
+```
+
+The wrapper is named `hft_engine_wrapper.v`. It accepts the scalar fields produced by the Phase 4 packet parser and exposes only the final trading-decision interface. Internal wires carry accepted packets and calculated values between the Phase 5 modules.
+
+### Top-level parameters and ports
+
+The wrapper keeps the five supported instrument identifiers configurable:
+
+```verilog
+module hft_engine_wrapper #(
+    parameter [31:0] INSTRUMENT_ID_0 = 32'd1,
+    parameter [31:0] INSTRUMENT_ID_1 = 32'd2,
+    parameter [31:0] INSTRUMENT_ID_2 = 32'd3,
+    parameter [31:0] INSTRUMENT_ID_3 = 32'd4,
+    parameter [31:0] INSTRUMENT_ID_4 = 32'd5
+)(
+    input wire clk,
+    input wire resetn,
+
+    input wire packet_valid,
+    input wire packet_error,
+    input wire [7:0] message_type,
+    input wire [7:0] side,
+    input wire [31:0] seq,
+    input wire [63:0] timestamp_ns,
+    input wire [31:0] instrument_id,
+    input wire [31:0] price_ticks,
+    input wire [31:0] qntity,
+
+    output wire signal_valid,
+    output wire [2:0] signal_instrument_slot,
+    output wire [63:0] signal_timestamp_ns,
+    output wire [1:0] trade_signal,
+    output wire signed [63:0] direction_score,
+    output wire signed [63:0] required_score
+);
+```
+
+The parsed packet interface is deliberately the same as the output of `hft_packet_parser_wrapper`. This allows direct point-to-point Block Design connections without repacking the fields into another bus.
+
+The final output encoding is:
+
+| `trade_signal` | Meaning |
+| --- | --- |
+| `2'b00` | HOLD |
+| `2'b01` | BUY |
+| `2'b10` | SELL |
+
+`signal_valid` qualifies all decision outputs. The slot, timestamp, signal, and scores belong to the same decision only when `signal_valid` is asserted.
+
+### Internal pipeline wires
+
+Each stage has a `valid` signal and associated metadata/data wires:
+
+```verilog
+wire quote_valid;
+wire [2:0] quote_instrument_slot;
+wire [7:0] quote_side;
+wire [31:0] quote_seq;
+wire [63:0] quote_timestamp_ns;
+wire [31:0] quote_price_ticks;
+wire [31:0] quote_quantity;
+
+wire tracked_quote_valid;
+wire [2:0] tracked_instrument_slot;
+wire [7:0] tracked_side;
+wire [31:0] tracked_seq;
+wire [63:0] tracked_timestamp_ns;
+wire [31:0] tracked_price_ticks;
+wire [31:0] tracked_quantity;
+
+wire book_update_valid;
+wire [2:0] book_instrument_slot;
+wire [63:0] book_timestamp_ns;
+wire [31:0] book_bid_price;
+wire [31:0] book_bid_quantity;
+wire [31:0] book_ask_price;
+wire [31:0] book_ask_quantity;
+wire book_valid;
+wire crossed_book;
+
+wire feature_valid;
+wire [2:0] feature_instrument_slot;
+wire [63:0] feature_timestamp_ns;
+wire signed [33:0] trend;
+wire signed [32:0] quantity_imbalance;
+wire [31:0] spread;
+```
+
+These wires do not introduce storage by themselves. Storage and pipelining remain inside the individual sequential modules. The wrapper therefore performs structural integration rather than duplicating any trading logic.
+
+### Packet-filter block
+
+```verilog
+hft_packet_filter #(
+    .INSTRUMENT_ID_0(INSTRUMENT_ID_0),
+    .INSTRUMENT_ID_1(INSTRUMENT_ID_1),
+    .INSTRUMENT_ID_2(INSTRUMENT_ID_2),
+    .INSTRUMENT_ID_3(INSTRUMENT_ID_3),
+    .INSTRUMENT_ID_4(INSTRUMENT_ID_4)
+) packet_filter_inst (
+    .clk(clk),
+    .resetn(resetn),
+    .packet_valid(packet_valid),
+    .packet_error(packet_error),
+    .message_type(message_type),
+    .side(side),
+    .seq(seq),
+    .timestamp_ns(timestamp_ns),
+    .instrument_id(instrument_id),
+    .price_ticks(price_ticks),
+    .qntity(qntity),
+    .quote_valid(quote_valid),
+    .instrument_slot(quote_instrument_slot),
+    .quote_side(quote_side),
+    .quote_seq(quote_seq),
+    .quote_timestamp_ns(quote_timestamp_ns),
+    .quote_price_ticks(quote_price_ticks),
+    .quote_quantity(quote_quantity),
+    .stream_active(stream_active),
+    .stream_start_pulse(stream_start_pulse),
+    .stream_end_pulse(stream_end_pulse),
+    .unknown_instrument(unknown_instrument)
+);
+```
+
+This stage rejects parser errors and unsupported instrument identifiers. It maps external instrument IDs `1`–`5` to compact internal slots `0`–`4`. `STREAM_START` activates quote processing and generates a one-cycle reset pulse for downstream stream state. `STREAM_END` disables quote processing and terminates the current stream.
+
+### Sequence-tracker block
+
+```verilog
+hft_sequence_tracker sequence_tracker_inst (
+    .clk(clk),
+    .resetn(resetn),
+    .stream_start_pulse(stream_start_pulse),
+    .stream_end_pulse(stream_end_pulse),
+    .quote_valid(quote_valid),
+    .instrument_slot(quote_instrument_slot),
+    .quote_side(quote_side),
+    .quote_seq(quote_seq),
+    .quote_timestamp_ns(quote_timestamp_ns),
+    .quote_price_ticks(quote_price_ticks),
+    .quote_quantity(quote_quantity),
+    .tracked_quote_valid(tracked_quote_valid),
+    .tracked_instrument_slot(tracked_instrument_slot),
+    .tracked_side(tracked_side),
+    .tracked_seq(tracked_seq),
+    .tracked_timestamp_ns(tracked_timestamp_ns),
+    .tracked_price_ticks(tracked_price_ticks),
+    .tracked_quantity(tracked_quantity),
+    .sequence_initialized(sequence_initialized),
+    .sequence_error(sequence_error),
+    .missing_packet(missing_packet),
+    .duplicate_packet(duplicate_packet),
+    .out_of_order_packet(out_of_order_packet),
+    .expected_seq(expected_seq),
+    .missing_count(missing_count),
+    .duplicate_count(duplicate_count),
+    .out_of_order_count(out_of_order_count)
+);
+```
+
+The first valid quote initializes sequence tracking. In-order packets are forwarded. A forward sequence jump is classified as missing data and accepted while the expected value is resynchronized. Duplicate and older out-of-order packets are rejected so stale data cannot modify an instrument book.
+
+### Instrument-book block
+
+```verilog
+hft_instrument_book instrument_book_inst (
+    .clk(clk),
+    .resetn(resetn),
+    .stream_start_pulse(stream_start_pulse),
+    .stream_end_pulse(stream_end_pulse),
+    .tracked_quote_valid(tracked_quote_valid),
+    .tracked_instrument_slot(tracked_instrument_slot),
+    .tracked_side(tracked_side),
+    .tracked_seq(tracked_seq),
+    .tracked_timestamp_ns(tracked_timestamp_ns),
+    .tracked_price_ticks(tracked_price_ticks),
+    .tracked_quantity(tracked_quantity),
+    .book_update_valid(book_update_valid),
+    .book_instrument_slot(book_instrument_slot),
+    .book_seq(book_seq),
+    .book_timestamp_ns(book_timestamp_ns),
+    .book_bid_price(book_bid_price),
+    .book_bid_quantity(book_bid_quantity),
+    .book_ask_price(book_ask_price),
+    .book_ask_quantity(book_ask_quantity),
+    .book_valid(book_valid),
+    .crossed_book(crossed_book)
+);
+```
+
+The book stores one bid price/quantity pair and one ask price/quantity pair for each instrument slot. Updating one side preserves the most recent value on the opposite side. `book_valid` becomes true only after both sides have been initialized. `crossed_book` identifies an invalid market state in which the bid price is greater than the ask price.
+
+### Feature-engine block
+
+```verilog
+hft_feature_engine feature_engine_inst (
+    .clk(clk),
+    .resetn(resetn),
+    .stream_start_pulse(stream_start_pulse),
+    .stream_end_pulse(stream_end_pulse),
+    .book_update_valid(book_update_valid),
+    .book_instrument_slot(book_instrument_slot),
+    .book_timestamp_ns(book_timestamp_ns),
+    .book_bid_price(book_bid_price),
+    .book_bid_quantity(book_bid_quantity),
+    .book_ask_price(book_ask_price),
+    .book_ask_quantity(book_ask_quantity),
+    .book_valid(book_valid),
+    .crossed_book(crossed_book),
+    .feature_valid(feature_valid),
+    .feature_instrument_slot(feature_instrument_slot),
+    .feature_timestamp_ns(feature_timestamp_ns),
+    .trend(trend),
+    .quantity_imbalance(quantity_imbalance),
+    .spread(spread)
+);
+```
+
+Only complete, non-crossed books are processed. Each instrument owns independent fast and slow moving-average buffers, pointers, rolling sums, warm-up state, and sample count. The engine waits for 32 eligible samples before asserting `feature_valid`. It then produces:
+
+```text
+trend              = fast midpoint average - slow midpoint average
+quantity_imbalance = bid quantity - ask quantity
+spread             = ask price - bid price
+```
+
+Using `bid + ask` instead of immediately dividing the midpoint by two preserves the half-tick precision with integer hardware arithmetic.
+
+### Weighted-decision block
+
+The weighted decision parameters were supplied as explicitly sized numeric constants inside the wrapper:
+
+```verilog
+weighted_decision #(
+    .TREND_WEIGHT(16'sd4),
+    .IMBALANCE_WEIGHT(16'sd1),
+    .SPREAD_WEIGHT(16'd2),
+    .BASE_THRESHOLD(64'sd100)
+) weighted_decision_inst (
+    .clk(clk),
+    .resetn(resetn),
+    .feature_valid(feature_valid),
+    .instrument_slot(feature_instrument_slot),
+    .feature_timestamp_ns(feature_timestamp_ns),
+    .trend(trend),
+    .quantity_imbalance(quantity_imbalance),
+    .spread(spread),
+    .signal_valid(signal_valid),
+    .signal_instrument_slot(signal_instrument_slot),
+    .signal_timestamp_ns(signal_timestamp_ns),
+    .trade_signal(trade_signal),
+    .direction_score(direction_score),
+    .required_score(required_score)
+);
+```
+
+The equations are:
+
+```text
+direction_score = 4 * trend + 1 * quantity_imbalance
+required_score  = 100 + 2 * spread
+```
+
+The decision is BUY when `direction_score > required_score`, SELL when `direction_score < -required_score`, and HOLD otherwise. The spread increases the evidence required for either directional trade.
+
+The constants were placed directly on this internal instance after hardware debugging showed that a top-level Block Design parameter had been represented as ASCII `"104"`, producing `0x313034` instead of the intended numeric threshold. The corrected hardware produces `required_score = 0x68` when the spread is two ticks.
+
+### Integrated SystemVerilog testbench
+
+`hft_engine_wrapper_tb.sv` drives complete parsed packets into the wrapper rather than directly driving an intermediate stage. Its helper tasks perform three roles:
+
+```systemverilog
+// Drives one parsed packet for one clock cycle.
+task automatic send_packet(...);
+
+// Builds a quote-update transaction with the requested side and values.
+task automatic send_quote(...);
+
+// Waits for signal_valid and compares the complete decision transaction.
+task automatic expect_signal(...);
+```
+
+The test sequence checks:
+
+1. Reset clears all externally visible and internal state.
+2. Quotes before `STREAM_START` are ignored.
+3. Erroneous packets and unknown instruments are rejected.
+4. Crossed books do not advance feature warm-up.
+5. A second `STREAM_START` clears previous book and feature history.
+6. Slot 0 completes its 32-sample warm-up independently of slot 1.
+7. Stable prices and balanced quantities produce HOLD.
+8. Positive quantity imbalance produces BUY.
+9. Duplicate and out-of-order quotes are rejected and counted.
+10. A forward sequence gap is counted, accepted, and can produce SELL.
+11. `STREAM_END` prevents further decisions.
+12. An active reset clears the complete pipeline.
+
+The final integrated test results were:
+
+```text
+PASS: first integrated HOLD slot=0 timestamp=13200 signal=0 score=0 threshold=104
+PASS: integrated BUY slot=0 timestamp=14000 signal=1 score=200 threshold=104
+PASS: missing-sequence SELL slot=0 timestamp=15000 signal=10 score=-200 threshold=104
+PASS: integrated HOLD after SELL slot=0 timestamp=16000 signal=0 score=0 threshold=104
+All hft_engine_wrapper tests passed.
+```
+
+![Integrated Phase 5 wrapper simulation](images/phase5_6_wrapper_simulation.png)
+
+The waveform above shows parsed inputs flowing through the packet filter, sequence tracker, and instrument-book sections of the integrated design.
+
+![Feature and decision outputs in the integrated simulation](images/phase5_6_decision_outputs.png)
+
+The second waveform section shows the feature-valid pulses and the corresponding registered HOLD, BUY, and SELL outputs.
+
+## Phase 5.7 — Vivado Block Design and FPGA Build Integration
+
+### Objective
+
+The objective of Phase 5.7 was to place `hft_engine_wrapper.v` after the existing Phase 4 packet parser in the Vivado IP Integrator design. The parser and engine use the same 50 MHz PL clock and active-low peripheral reset. A dedicated ILA records final trading decisions.
+
+### Adding the module reference
+
+The custom wrapper is added as a Module Reference rather than packaged as a separate AXI IP. After changing `hft_engine_wrapper.v`, the module reference must be updated before regenerating the Block Design outputs:
+
+```tcl
+update_module_reference phase3_axi_design_hft_engine_wrapper_0_0
+save_bd_design
+reset_target all [get_files */phase3_axi_design.bd]
+generate_target all [get_files */phase3_axi_design.bd]
+```
+
+`phase3_axi_design_hft_engine_wrapper_0_0` is the generated module-reference object name. It is not the same as the visible Block Design cell name `hft_engine_wrapper_0`.
+
+### Clock and reset connections
+
+```tcl
+connect_bd_net \
+    [get_bd_pins processing_system7_0/FCLK_CLK0] \
+    [get_bd_pins hft_engine_wrapper_0/clk] \
+    [get_bd_pins ila_hft_decision/clk]
+
+connect_bd_net \
+    [get_bd_pins rst_ps7_0_50M/peripheral_aresetn] \
+    [get_bd_pins hft_engine_wrapper_0/resetn]
+```
+
+Using one synchronous PL clock avoids adding clock-domain crossings between the parser and trading engine. The processor-system-reset block ensures that reset deassertion is synchronized to this clock.
+
+### Parser-to-engine connections
+
+The parser's validated scalar outputs are connected directly to the engine inputs:
+
+```tcl
+connect_bd_net [get_bd_pins hft_packet_parser_wr_0/packet_valid]  [get_bd_pins hft_engine_wrapper_0/packet_valid]
+connect_bd_net [get_bd_pins hft_packet_parser_wr_0/packet_error]  [get_bd_pins hft_engine_wrapper_0/packet_error]
+connect_bd_net [get_bd_pins hft_packet_parser_wr_0/message_type]  [get_bd_pins hft_engine_wrapper_0/message_type]
+connect_bd_net [get_bd_pins hft_packet_parser_wr_0/side]          [get_bd_pins hft_engine_wrapper_0/side]
+connect_bd_net [get_bd_pins hft_packet_parser_wr_0/seq]           [get_bd_pins hft_engine_wrapper_0/seq]
+connect_bd_net [get_bd_pins hft_packet_parser_wr_0/timestamp_ns]  [get_bd_pins hft_engine_wrapper_0/timestamp_ns]
+connect_bd_net [get_bd_pins hft_packet_parser_wr_0/instrument_id] [get_bd_pins hft_engine_wrapper_0/instrument_id]
+connect_bd_net [get_bd_pins hft_packet_parser_wr_0/price_ticks]   [get_bd_pins hft_engine_wrapper_0/price_ticks]
+connect_bd_net [get_bd_pins hft_packet_parser_wr_0/qntity]        [get_bd_pins hft_engine_wrapper_0/qntity]
+```
+
+The AXI4-Stream packet continues through the existing DMA loopback path. The parser observes the same accepted AXI beats and emits the decoded fields in parallel. Phase 5 therefore adds trading analysis without removing the Phase 4 DMA verification path.
+
+### Decision ILA configuration
+
+The decision ILA uses six probes with a capture depth of 1024 samples:
+
+| Probe | Width | Connected signal |
+| --- | ---: | --- |
+| `probe0` | 1 | `signal_valid` |
+| `probe1` | 3 | `signal_instrument_slot` |
+| `probe2` | 64 | `signal_timestamp_ns` |
+| `probe3` | 2 | `trade_signal` |
+| `probe4` | 64 | `direction_score` |
+| `probe5` | 64 | `required_score` |
+
+Representative creation and connection commands are:
+
+```tcl
+create_bd_cell -type ip -vlnv xilinx.com:ip:ila:6.2 ila_hft_decision
+
+set_property -dict [list \
+    CONFIG.C_DATA_DEPTH {1024} \
+    CONFIG.C_NUM_OF_PROBES {6} \
+    CONFIG.C_PROBE0_WIDTH {1} \
+    CONFIG.C_PROBE1_WIDTH {3} \
+    CONFIG.C_PROBE2_WIDTH {64} \
+    CONFIG.C_PROBE3_WIDTH {2} \
+    CONFIG.C_PROBE4_WIDTH {64} \
+    CONFIG.C_PROBE5_WIDTH {64}] \
+    [get_bd_cells ila_hft_decision]
+
+connect_bd_net [get_bd_pins hft_engine_wrapper_0/signal_valid]           [get_bd_pins ila_hft_decision/probe0]
+connect_bd_net [get_bd_pins hft_engine_wrapper_0/signal_instrument_slot] [get_bd_pins ila_hft_decision/probe1]
+connect_bd_net [get_bd_pins hft_engine_wrapper_0/signal_timestamp_ns]    [get_bd_pins ila_hft_decision/probe2]
+connect_bd_net [get_bd_pins hft_engine_wrapper_0/trade_signal]           [get_bd_pins ila_hft_decision/probe3]
+connect_bd_net [get_bd_pins hft_engine_wrapper_0/direction_score]        [get_bd_pins ila_hft_decision/probe4]
+connect_bd_net [get_bd_pins hft_engine_wrapper_0/required_score]         [get_bd_pins ila_hft_decision/probe5]
+```
+
+![Completed Block Design with parser, HFT engine, and decision ILA](images/phase5_7_block_design.png)
+
+### Generated Verilog wrapper
+
+Vivado generates `phase3_axi_design_wrapper.v` around the complete Block Design. This generated file instantiates the Block Design and exposes the physical DDR and Zynq fixed-I/O ports. It should not be manually edited because regenerating the Block Design can overwrite it.
+
+The distinction is:
+
+| File | Purpose |
+| --- | --- |
+| `hft_engine_wrapper.v` | User-written wrapper connecting the Phase 5 trading modules |
+| `phase3_axi_design_wrapper.v` | Vivado-generated project top around the complete Zynq Block Design |
+
+### Build and deployment files
+
+Synthesis, implementation, and bitstream generation create files using the original Vivado design names:
+
+```text
+PYNQ_HFT.runs/impl_1/phase3_axi_design_wrapper.bit
+PYNQ_HFT.gen/sources_1/bd/phase3_axi_design/hw_handoff/phase3_axi_design.hwh
+```
+
+The matching debug probes are exported after opening the implemented design:
+
+```tcl
+open_run impl_1
+write_debug_probes -force {C:/root_pqnq/PYNQ_HFT/phase 5/phase5_hft_pipeline.ltx}
+```
+
+For PYNQ deployment, the bitstream and hardware handoff are copied and renamed to the same basename:
+
+```text
+phase5_hft_pipeline.bit
+phase5_hft_pipeline.hwh
+```
+
+PYNQ uses the `.hwh` metadata associated with the `.bit` file to discover the DMA and processing-system IP. Vivado Hardware Manager uses the matching `.ltx` file to identify the ILA probes. SHA-256 comparisons confirmed that the generated files, Windows deployment copies, and PYNQ copies were identical.
+
+## Phase 5.8 — PYNQ and ILA Hardware Validation
+
+### Objective
+
+The objective of Phase 5.8 was to validate the implemented pipeline on the physical PYNQ-Z2 rather than relying only on RTL simulation. Python running on the processing system constructs binary market-data packets, transfers them through AXI DMA, and pauses before important packets so the Vivado ILA can be armed.
+
+Two Python tests are used:
+
+| Script | Purpose |
+| --- | --- |
+| `phase5_ila_packet_test.py` | Validate correct and erroneous packet parsing in hardware |
+| `phase5_decision_ila_test.py` | Warm up the complete engine and produce HOLD, BUY, and SELL decisions |
+
+### Overlay loading and IP discovery
+
+The scripts begin by loading the bitstream and obtaining the DMA instance:
+
+```python
+from pathlib import Path
+from pynq import Overlay, allocate
+import numpy as np
+import struct
+
+BITSTREAM_PATH = Path(
+    "/home/xilinx/PYNQ_HFT/phase5/phase5_hft_pipeline.bit"
+)
+
+overlay = Overlay(str(BITSTREAM_PATH), download=True)
+dma = overlay.axi_dma_0
+```
+
+`download=True` programs the PL with the selected bitstream each time the test starts. Root permission is required because PYNQ accesses the Zynq clock and memory-mapped configuration registers, so the script is run using `sudo -E`.
+
+### Packet construction
+
+The 32-byte market-data packet is encoded using big-endian network byte order:
+
+```python
+PACKET_FORMAT = "!4sBBBBIQIII"
+
+def build_packet(
+    magic,
+    version,
+    message_type,
+    side,
+    reserved,
+    sequence,
+    timestamp_ns,
+    instrument_id,
+    price_ticks,
+    quantity,
+):
+    return struct.pack(
+        PACKET_FORMAT,
+        magic,
+        version,
+        message_type,
+        side,
+        reserved,
+        sequence,
+        timestamp_ns,
+        instrument_id,
+        price_ticks,
+        quantity,
+    )
+```
+
+The format fields are:
+
+| Format field | Bytes | Packet value |
+| --- | ---: | --- |
+| `4s` | 4 | Magic `HFT1` |
+| `B` | 1 | Version |
+| `B` | 1 | Message type |
+| `B` | 1 | Side |
+| `B` | 1 | Reserved byte |
+| `I` | 4 | Sequence number |
+| `Q` | 8 | Timestamp in nanoseconds |
+| `I` | 4 | Instrument ID |
+| `I` | 4 | Price in ticks |
+| `I` | 4 | Quantity |
+
+Python packs the packet in network order. The Phase 4 parser performs the corresponding per-word byte conversion before validating and decoding the fields.
+
+### DMA transfer function
+
+The DMA helper allocates physically contiguous buffers, copies the packet into the transmit buffer, starts the receive channel first, and then starts transmission:
+
+```python
+def dma_transfer(dma, packet_bytes):
+    tx_buffer = allocate(shape=(len(packet_bytes),), dtype=np.uint8)
+    rx_buffer = allocate(shape=(len(packet_bytes),), dtype=np.uint8)
+
+    try:
+        tx_buffer[:] = np.frombuffer(packet_bytes, dtype=np.uint8)
+        rx_buffer[:] = 0
+
+        dma.recvchannel.transfer(rx_buffer)
+        dma.sendchannel.transfer(tx_buffer)
+
+        dma.sendchannel.wait()
+        dma.recvchannel.wait()
+
+        received = bytes(rx_buffer)
+        return received
+    finally:
+        tx_buffer.freebuffer()
+        rx_buffer.freebuffer()
+```
+
+The receive channel is armed first so that the returning AXI stream always has somewhere to go. Starting only the transmit side can fill the downstream path or leave the S2MM channel inactive. The earlier `DMA channel not started` error was resolved before the final test, and the hardware loopback subsequently matched every transmitted packet byte-for-byte.
+
+### Parser-validity hardware test
+
+The first script sends two packets:
+
+1. A correct `HFT1` quote packet. The parser ILA must show `packet_valid=1`, `packet_error=0`, and `error_flags=0x00`.
+2. A packet using invalid magic `BAD1`. The parser ILA must show `packet_valid=0`, `packet_error=1`, and `error_flags[0]=1`.
+
+The DMA receive data matched the transmitted data for both packets, proving that parser observation did not disturb the AXI stream. The ILA independently verified the parser classification.
+
+### Decision-test traffic generation
+
+The decision script performs the following ordered sequence:
+
+```python
+# 1. Start a fresh market-data stream.
+send_stream_start()
+
+# 2. Supply 32 eligible book samples for feature warm-up.
+for sample in range(1, 33):
+    send_warmup_sample(sample)
+
+# 3. Pause before each controlled decision packet.
+input("Press Enter after the HOLD trigger is armed...")
+send_hold_packet()
+
+input("Press Enter after the BUY trigger is armed...")
+send_buy_packet()
+
+input("Press Enter after the SELL trigger is armed...")
+send_sell_packet()
+
+# 4. End the market-data stream.
+send_stream_end()
+```
+
+The `input()` calls are software pauses for coordinating the terminal with Vivado Hardware Manager. They are not FPGA handshakes. Once Enter is pressed, the packet is transmitted through DMA and the hardware pipeline processes it without CPU intervention.
+
+Warm-up traffic keeps the midpoint stable, bid/ask quantities balanced, and the spread equal to two ticks. This establishes:
+
+```text
+trend = 0
+spread = 2
+required_score = 100 + 2 * 2 = 104
+```
+
+The controlled decision packets then change quantity imbalance:
+
+| Test | Trend | Quantity imbalance | Direction score | Required score | Expected signal |
+| --- | ---: | ---: | ---: | ---: | --- |
+| HOLD | 0 | 0 | 0 | 104 | `00` |
+| BUY | 0 | +200 | +200 | 104 | `01` |
+| SELL | 0 | -200 | -200 | 104 | `10` |
+
+### ILA trigger procedure
+
+The most reliable trigger uses only:
+
+```text
+signal_valid == 1
+```
+
+The Python script emits only one controlled decision after each pause, so the next `signal_valid` pulse necessarily belongs to the requested HOLD, BUY, or SELL packet. `trade_signal` remains displayed in the waveform but is not required as a trigger condition.
+
+`signal_valid` and the non-HOLD decision are asserted for one 50 MHz clock cycle. This is a 20 ns pulse. The ILA capture must therefore be zoomed around the trigger sample; at a full 1024-sample view the pulse can appear to remain at zero.
+
+### HOLD capture
+
+![HOLD hardware capture](images/phase5_8_hold_capture.png)
+
+The corrected hardware threshold is visible as `0x68`, which is decimal 104. The stable and balanced book produces a zero direction score and HOLD.
+
+```text
+signal_valid    = 1
+trade_signal    = 00
+direction_score = 0x0000000000000000
+required_score  = 0x0000000000000068
+```
+
+### BUY capture
+
+![BUY hardware capture](images/phase5_8_buy_capture.png)
+
+At the trigger cycle, `signal_valid` is high and `trade_signal` is `1`, representing binary `01`. The direction score is `0xC8`, or decimal 200, which is greater than the threshold.
+
+```text
+signal_valid    = 1
+trade_signal    = 01
+direction_score = 0x00000000000000C8
+required_score  = 0x0000000000000068
+```
+
+On the following clock, `signal_valid` returns low and the RTL returns `trade_signal` to HOLD. The registered score outputs remain visible, which is why zooming to the exact valid cycle is necessary.
+
+### SELL capture
+
+![SELL hardware capture](images/phase5_8_sell_capture.png)
+
+The SELL capture shows `trade_signal=2`, representing binary `10`. The score is the 64-bit two's-complement representation of -200.
+
+```text
+signal_valid    = 1
+trade_signal    = 10
+direction_score = 0xFFFFFFFFFFFFFF38
+required_score  = 0x0000000000000068
+```
+
+Because -200 is less than -104, the weighted-decision block correctly selects SELL.
+
+### Phase 5.8 result
+
+The terminal completed the complete hardware sequence:
+
+```text
+STREAM_START sent
+Warm-up sample 8/32
+Warm-up sample 16/32
+Warm-up sample 24/32
+Warm-up sample 32/32
+HOLD packet sent
+BUY packet sent
+SELL packet sent
+STREAM_END sent
+All Phase 5.8 decision traffic completed.
+```
+
+The simulation results, DMA/parser checks, ILA captures, and final terminal output together validate the full hardware path:
+
+```text
+AXI DMA
+    -> packet parser
+    -> packet filter
+    -> sequence tracker
+    -> instrument book
+    -> feature engine
+    -> weighted decision
+    -> HOLD / BUY / SELL
+```
+
+Phase 5 is therefore functionally complete. Remaining project work is limited to final performance characterization, timing/resource reporting, and packaging the complete project documentation and deployment files.
+
+
