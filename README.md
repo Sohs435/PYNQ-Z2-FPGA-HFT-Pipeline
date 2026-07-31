@@ -38,13 +38,13 @@ Laptop UDP generator
 - 16 GB micro SD-card
 - USB connection to laptop for power
 
-## Project progress
+## Project progress - verification and performance benchmarks are all that is left, everything else is complete
 
 - [x] Phase 1 — Direct Ethernet network setup
 - [x] Phase 2 — UDP Communication
 - [x] Phase 3 — AXI DMA integration
-- [x] Phase 4 — FPGA packet parser - need to add some files
-- [x] Phase 5 — Trading strategy - documentation in progress
+- [x] Phase 4 — FPGA packet parser 
+- [x] Phase 5 — Trading strategy
 - [ ] Phase 6 — Performance benchmarking
 
 ## Packet format
