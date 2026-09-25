@@ -1,20 +1,25 @@
 #!/usr/bin/env python3
 """Send optimized2 HFT1 traffic to the matching recvmmsg receiver."""
+# Old sender calls time.time_ns() just before sending so timestamp reflects when python built that packet
+# this sender reads the clock once at the start and calculates each quote's timestamp from its planned send time
+# we avoid a clock call every quote reducing the work in main sending loop 
+
+# reuse same packet buff to avoid creating new obj for every quote using pack_into
 
 import argparse
 import socket
 import struct
 import sys
 import time
-
-
+s
+#change default pps to 11000
 DESTINATION_IP = "192.168.2.99"
 DESTINATION_PORT = 5001
 DEFAULT_PPS = 11_000
 DEFAULT_DURATION = 10.0
 MAX_PPS = 250_000
 MAX_PLANNED_PACKETS = 10_000_000
-
+#change control types to 4 and 5 instead of 254 and 255
 MESSAGE_QUOTE_UPDATE = 1
 MESSAGE_STREAM_START = 4
 MESSAGE_STREAM_END = 5
@@ -74,6 +79,7 @@ def pack_packet_into(
     price_ticks,
     quantity,
 ):
+    #use pack_into to reuse a 32 byte array rather than create a new one every time
     PACKET_STRUCT.pack_into(
         packet_buffer,
         0,
