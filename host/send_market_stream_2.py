@@ -220,8 +220,8 @@ def main():
             sent_packets,
         )
 
-        # Repeating only the end marker makes final reporting more robust when
-        # the receiver is overloaded. Repeated markers are not market packets.
+        # Send end/final packet 5 times every 10ms to make it more likely the receiver at least gets 
+        # 1 packet because udp has no triple handshake like tcp
         for _ in range(5):
             sock.sendto(end_control, destination)
             time.sleep(0.01)
@@ -239,6 +239,7 @@ def main():
     print(f"Measured duration: {elapsed_seconds:.3f} s")
     print(f"Average send rate: {average_rate:,.0f} pps")
 
+    #130 since signal interrupt handled by code like ctrl + C
     return 130 if interrupted else 0
 
 
