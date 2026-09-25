@@ -19,7 +19,7 @@
 
 #define DEFAULT_LISTEN_IP "0.0.0.0"
 #define DEFAULT_LISTEN_PORT 5001
-#define DEFAULT_BATCH_SIZE 64
+#define DEFAULT_BATCH_SIZE 64 //64 datagrams per receiver call
 #define MAX_BATCH_SIZE 256
 
 #define PACKET_SIZE 32
@@ -35,6 +35,18 @@
 #define SUPPORTED_VERSION 1
 
 
+//the main difference between the python and c implementation of the receiver is the recieve call
+//the python receiver uses recvfrom_into(), which reads one datagram per call
+//this receiver uses recvmsg() that reads up to 64 datagrams per call by default
+
+//recvmsg path:
+//receiver binds UDP socket to 5001 and prepares the 64 slots via iovec
+//recvmmsg() waits for 1 datagram and collects up to 64 datagrams present on the receiver socket and returns num of slots filled
+//foreach filled slot packet bytes are in sections of buffers
+//process_datagram is called on each packet and checks the packet and updates the stream state
+//which can be start, quote or end 
+//once all slots are processed receiver calles recvmsg again
+/batching reduces receive calls to OS. 
 static volatile sig_atomic_t stop_requested = 0;
 
 
@@ -48,7 +60,9 @@ struct udp_statistics {
     bool valid;
 };
 
-
+//the base declaration if this struct is very similar to the stream_state struct
+// comprising of an active flag, the base test parameters, the classifications of packets
+// from valid to erroneous types like duplicate
 struct stream_state {
     bool active;
     struct sockaddr_in sender;
@@ -154,7 +168,7 @@ static struct udp_statistics read_udp_statistics(void)
 
 
 static void reset_stream(
-    struct stream_state *state,
+    struct stream_state *state, //pointer to a stream_state obj 
     const struct sockaddr_in *sender,
     uint32_t target_pps,
     uint32_t planned_packets)
@@ -167,7 +181,7 @@ static void reset_stream(
         exit(EXIT_FAILURE);
     }
 
-    state->active = true;
+    state->active = true; //test initiated 
     state->sender = *sender;
     state->target_pps = target_pps;
     state->planned_packets = planned_packets;
@@ -357,7 +371,8 @@ static void finish_stream(
     state->seen_sequences = NULL;
 }
 
-
+//checks if the respective packet fields are correct 
+//it also checks if the packet size is 32 byte 
 static void process_datagram(
     struct stream_state *state,
     const uint8_t *packet,
@@ -371,24 +386,27 @@ static void process_datagram(
         }
         return;
     }
-
+    // magic = HFT1, version = SUPPORTED_VERSION = 1
     if (memcmp(packet, "HFT1", 4) != 0 || packet[4] != SUPPORTED_VERSION) {
         if (state->active) {
             state->invalid_packets++;
         }
         return;
     }
-
+    
     uint8_t message_type = packet[5];
     uint8_t side = packet[6];
     uint8_t flags = packet[7];
     uint32_t sequence = load_be32(packet + 8);
 
+    //start packet received -> extract test parameters from it 
     if (message_type == MESSAGE_STREAM_START) {
         uint32_t target_pps = load_be32(packet + 20);
         uint32_t duration_ms = load_be32(packet + 24);
         uint32_t planned_packets = load_be32(packet + 28);
 
+        //we need pps to be non zero and positive, same for planned packets and its maximum 
+        // planned_packets < 1
         if (target_pps < 1
             || duration_ms < 1
             || planned_packets < 1
@@ -400,7 +418,7 @@ static void process_datagram(
         print_stream_start(state, duration_ms);
         return;
     }
-
+    
     if (message_type == MESSAGE_STREAM_END) {
         if (!state->active || !same_sender(sender, &state->sender)) {
             return;
@@ -419,6 +437,9 @@ static void process_datagram(
         return;
     }
 
+    //side can only every be 0 or 1
+    //a non start/stop packet needs to have type = MESSAGE_QUOTE_UPDATE
+    //sequence is 1 to planned_packets so in between them
     if (message_type != MESSAGE_QUOTE_UPDATE
         || side > 1
         || flags != 0
@@ -578,12 +599,12 @@ int main(int argc, char **argv)
         &actual_buffer,
         &actual_buffer_length);
 
-    struct mmsghdr *messages = calloc((size_t)batch_size, sizeof(*messages));
-    struct iovec *vectors = calloc((size_t)batch_size, sizeof(*vectors));
-    struct sockaddr_in *senders = calloc((size_t)batch_size, sizeof(*senders));
-    uint8_t *buffers = calloc(
-        (size_t)batch_size,
-        (size_t)MAX_DATAGRAM_SIZE);
+    //before the receive loop we allocate 4 arrays
+    //batchsize = 64
+    struct mmsghdr *messages = calloc((size_t)batch_size, sizeof(*messages));//description of vectors[i] and sender address location together
+    struct iovec *vectors = calloc((size_t)batch_size, sizeof(*vectors)); //describes where packet i's bytes go
+    struct sockaddr_in *senders = calloc((size_t)batch_size, sizeof(*senders)); //holds source ip and port for a given packet i
+    uint8_t *buffers = calloc((size_t)batch_size, (size_t)MAX_DATAGRAM_SIZE); //holds 64 seperate 2048 byte spaces for packet contents
 
     if (messages == NULL || vectors == NULL || senders == NULL || buffers == NULL) {
         fprintf(stderr, "Unable to allocate receive batch\n");
@@ -596,15 +617,31 @@ int main(int argc, char **argv)
     }
 
     for (int index = 0; index < batch_size; index++) {
-        vectors[index].iov_base =
-            buffers + (size_t)index * MAX_DATAGRAM_SIZE;
+        //iov_base -> pointer to the starting address of a memory region for i/o operations
+        //set starting address for the packet's bytes
+        //index 0 starts at buffers + 0
+        //index 1 starts at buffers + 2048 and so on
+        vectors[index].iov_base = buffers + (size_t)index * MAX_DATAGRAM_SIZE;
+        
+        //each slot has 2048 bytes of space (since the starting pointers of each packet's bytes
+        //are 2048 bytes apart from each other 
         vectors[index].iov_len = MAX_DATAGRAM_SIZE;
+
+        //write the packet's source IP address and source port
+        //&senders[index] is the address of that slot's sockaddr_in structure 
         messages[index].msg_hdr.msg_name = &senders[index];
+
+        //space available for sender's address
         messages[index].msg_hdr.msg_namelen = sizeof(senders[index]);
+
+        //connects the mssage slot to the iovec configured above
         messages[index].msg_hdr.msg_iov = &vectors[index];
+
+        //each datagram will use 1 iovec, namely 1 contiguous byte buffer
         messages[index].msg_hdr.msg_iovlen = 1;
     }
 
+    //create the test state. equiv to python receiver test = StreamTest()
     struct stream_state state = {0};
 
     printf("Listening for %d-byte market packets...\n", PACKET_SIZE);
@@ -613,26 +650,40 @@ int main(int argc, char **argv)
     printf("recvmmsg batch size: %d\n", batch_size);
     printf("Periodic reports:   %s\n", periodic_reports ? "enabled" : "disabled");
 
+    //stop requested starts at 0 and keeps receiving packets until we the process receives
+    //a SIGINT or SIGTERM
     while (!stop_requested) {
         for (int index = 0; index < batch_size; index++) {
+            //on each loop iteration reset fields that a previous receive changed
             messages[index].msg_len = 0;
             messages[index].msg_hdr.msg_namelen = sizeof(senders[index]);
             messages[index].msg_hdr.msg_flags = 0;
         }
 
+        //recvmsg call 
+        //socket_fd -> sockfd
+        //messages -> msgvec
+        //batch_size -> vlen
+        //MSG_WAITFORONE -> flags
+        // NULL -> timeout 
+
+        //it waits for a first udp datagram and then takes other datagrams already available up to 
+        //batchsize
+        // it does not wait till all 64 slots are full
+        //recvmmsg() takes up to 64 UDP packets from the receive socket in one call
         bool call_started_active = state.active;
         int received = recvmmsg(
             socket_fd,
             messages,
             (unsigned int)batch_size,
             MSG_WAITFORONE,
-            NULL);
-
+            NULL); //receive is just the amount of datagrams received from the socket in the call
+        
         if (received < 0) {
-            if (errno == EINTR && stop_requested) {
+            if (errno == EINTR && stop_requested) {//stop_requested -> break main receiver loop 
                 break;
             }
-            if (errno == EINTR) {
+            if (errno == EINTR) {//error interrupted -> system call interrupted by signal before it could complete
                 continue;
             }
 
@@ -648,6 +699,7 @@ int main(int argc, char **argv)
             }
         }
 
+        //process each return packet (and increment the packet type count (duplicate, invalid, etc) 
         for (int index = 0; index < received; index++) {
             process_datagram(
                 &state,
