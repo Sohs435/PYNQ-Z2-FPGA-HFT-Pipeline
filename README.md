@@ -45,7 +45,6 @@ Laptop UDP generator
 - [x] Phase 3 — AXI DMA integration
 - [x] Phase 4 — FPGA packet parser 
 - [x] Phase 5 — Trading strategy
-- [ ] Phase 6 — Performance benchmarking
 
 ## Packet format
 
@@ -53,7 +52,7 @@ See `phase2_udp_communication.md` section 2.2 and 2.3.
 
 ## Repository structure
 
-See docs for detailed report of how system works. Any images in md files  can be viewed better by accessing docs/images. Verilog and Systerm Verilog files currently added up to phase 3 even though some exist for phase 4. I will be adding them once I get through the entire phase in a folder called phase 4. 
+See docs for detailed report of how system works. Any images in md files  can be viewed better by accessing docs/images.
 
 ## Results
 
