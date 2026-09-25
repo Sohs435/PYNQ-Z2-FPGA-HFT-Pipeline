@@ -73,6 +73,10 @@ def wait_until(deadline_ns):
             time.sleep((remaining_ns - SPIN_WINDOW_NS) / NANOSECONDS_PER_SECOND)
 
 
+#builds and returns a 32 byte packet given certain inputs (can be anything honestly
+#like target_pps does not have anything to do with the actual HFT packet format but
+#some of the fields have been converted to use those values since they can be any number)
+#pay them no heed
 def make_control_packet(message_type, sequence, target_pps, duration_ms, count):
     return PACKET_STRUCT.pack(
         MAGIC,
@@ -88,6 +92,7 @@ def make_control_packet(message_type, sequence, target_pps, duration_ms, count):
     )
 
 
+#create one synthetic market-data quote purely based on sequence 
 def make_quote_packet(sequence):
     side = sequence & 1
     instrument_id = 1 + ((sequence - 1) % 3)
@@ -107,7 +112,8 @@ def make_quote_packet(sequence):
         quantity,
     )
 
-
+#ensure that pps, ip, duration, port are all actually capturable/usable values
+#you cant have a pps or duration lt0 or a port not within the possible range of ports
 def validate_arguments(args, planned_packets, duration_ms):
     if args.pps <= 0:
         raise ValueError("--pps must be greater than zero")
@@ -134,9 +140,9 @@ def validate_arguments(args, planned_packets, duration_ms):
 
 
 def main():
-    args = parse_arguments()
-    planned_packets = int(round(args.pps * args.duration))
-    duration_ms = int(round(args.duration * 1_000))
+    args = parse_arguments() #ip, port, duration, sender rate 
+    planned_packets = int(round(args.pps * args.duration)) #7500pps * 10s = 75000 total packets
+    duration_ms = int(round(args.duration * 1_000)) #convert 10s to 10000ms 
 
     try:
         validate_arguments(args, planned_packets, duration_ms)
@@ -144,10 +150,16 @@ def main():
         print(f"Error: {error}", file=sys.stderr)
         return 2
 
-    destination = (args.ip, args.port)
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, SEND_BUFFER_BYTES)
+    destination = (args.ip, args.port)# destination contains IP = 192.168.2.99 and port 5001b 
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) #create IPV4 UDP socket 
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, SEND_BUFFER_BYTES)# create larger outgoing
+    #send buffer
+    #send buffer bytes = 4 * 1024 * 1024 = 4MiB
+    #tbh this is a bit much since we cannot expect so many packets to build up on the sender's stack
+    #its set very high to be needlessly safe (ex for a 100ms stall 750 packet que is the minimum)  
 
+    #let user know sender has started to transmit data to the given ip and port with given packet size
+    #etc... 
     print("Market stream sender started")
     print(f"Destination:     {args.ip}:{args.port}")
     print(f"Packet size:     {PACKET_SIZE} bytes")
@@ -155,6 +167,7 @@ def main():
     print(f"Test duration:   {args.duration:.3f} seconds")
     print(f"Planned packets: {planned_packets:,}")
 
+    #create control (start) packet to send over UDP before the quote packets 
     start_control = make_control_packet(
         CONTROL_START,
         0,
@@ -176,12 +189,15 @@ def main():
             deadline_ns = (
                 start_ns
                 + ((sequence - 1) * NANOSECONDS_PER_SECOND) // args.pps
-            )
+            ) #consider a 1/7500 second window in which the packet needs to be sent 
+            #t_diff = (start_ns - (k) * 10^9/7500) - (start_ns - (k-1) * 10^9/7500) = (10^9/7500)ns 
             wait_until(deadline_ns)
 
+            #create quote packet 
             packet = make_quote_packet(sequence)
             bytes_sent = sock.sendto(packet, destination)
 
+            #32 byte packet needs to be sent 
             if bytes_sent != PACKET_SIZE:
                 raise RuntimeError(
                     f"sendto() accepted {bytes_sent} of {PACKET_SIZE} bytes"
@@ -193,6 +209,7 @@ def main():
         interrupted = True
         print("\nSender interrupted")
 
+    #create ending packet 
     finally:
         end_ns = time.perf_counter_ns()
         end_control = make_control_packet(
@@ -211,8 +228,11 @@ def main():
 
         sock.close()
 
+    #overall time between start of packet stream and end of packet stream in seconds 
+    #should be extremely close to duration 
     elapsed_seconds = (end_ns - start_ns) / NANOSECONDS_PER_SECOND
     average_rate = sent_packets / elapsed_seconds if elapsed_seconds > 0 else 0.0
+    #should be extremely close to pps (wont be 100 perfect though)
 
     print("\nStream transmission complete")
     print(f"Packets sent:     {sent_packets:,}")
