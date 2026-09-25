@@ -2,20 +2,24 @@ import socket
 import struct
 import time
 
-
+#receive packets from all IPs
 LISTEN_IP = "0.0.0.0"
-LISTEN_PORT = 5001
+LISTEN_PORT = 5001 #at port 5001
 
+#default unique indentifier/magic for every valid packet and version 1
 MAGIC = b"HFT1"
 VERSION = 1
 
+#same as sender -> allows for receiver to know which packet is start, main loop or end packet 
 MESSAGE_QUOTE = 1
 CONTROL_START = 254
 CONTROL_END = 255
 
+#32 byte packet of defined structure 
 PACKET_STRUCT = struct.Struct("!4sBBBBIQIII")
 PACKET_SIZE = PACKET_STRUCT.size
 
+#sender buffer was 4Mib and so is receiver buffer bytes -> tbh very overkill given the packet rates run at but that was unknown at the time of creating this code 
 RECEIVE_BUFFER_BYTES = 4 * 1024 * 1024
 MAX_DATAGRAM_SIZE = 2_048
 MAX_PLANNED_PACKETS = 10_000_000
@@ -189,13 +193,13 @@ def valid_start_control(target_rate, duration_ms, planned_packets):
 
 
 def main():
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) #create receiver socket
     sock.setsockopt(
         socket.SOL_SOCKET,
         socket.SO_RCVBUF,
         RECEIVE_BUFFER_BYTES,
-    )
-    sock.bind((LISTEN_IP, LISTEN_PORT))
+    ) #increase buffer 
+    sock.bind((LISTEN_IP, LISTEN_PORT)) # bind socket at sender IP and port 5001
     sock.settimeout(0.5)
 
     actual_buffer = sock.getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF)
