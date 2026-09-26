@@ -4,6 +4,9 @@
 //Preserves TDATA, TKEEP and TLAST
 //Applies backpressure when the output register is occupied
 
+//Currently working on the following improvement:
+//The current tlast validation in batch mode doesnt account for the fact that tlast should go high on last packet of batch
+//Hence adding a packet counter for specific packet number in a batch will be done 
 module hft_packet_parser #(
     parameter logic TLAST_PER_PACKET = 1'b1
     
