@@ -1,6 +1,7 @@
 import numpy as np
 from pynq import Overlay, allocate
-
+#the syntax comes from pynq dma connection documentation
+#see: https://pynq.readthedocs.io/en/v2.5/pynq_libraries/dma.html
 
 OVERLAY_PATH = (
     "/home/xilinx/PYNQ_HFT/"
