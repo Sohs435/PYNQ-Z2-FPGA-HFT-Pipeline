@@ -62,7 +62,7 @@ phase4_9_live_udp_sender.py
 -> UDP ->
         
 PYNQ Processing System:
-phase4_9_live_udp_dma_test.py
+phase4_9_live_udp_dma_test.py / receive_market_stream_optimized2.c
 
 -> AXI DMA MM2S ->
         
