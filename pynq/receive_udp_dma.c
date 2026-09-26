@@ -1,3 +1,76 @@
+#define _GNU_SOURCE
+
+/*
+ * Batched UDP reception for phase4_9_live_udp_recvmmsg_dma.py.
+ * Build on the PYNQ-Z2:
+ *   gcc -O2 -std=c11 -Wall -Wextra -fPIC -shared \
+ *       -o libreceive_udp_dma.so receive_udp_dma.c
+ *
+ * The Python program owns the PYNQ overlay and DMA-compatible DDR buffers.
+ * This library owns only the UDP socket and recvmmsg receive slots.
+ */
+
+/* Run using:
+gcc -O2 -std=c11 -Wall -Wextra -fPIC -shared \
+    -o libreceive_udp_dma.so receive_udp_dma.c
+
+sudo -E /usr/local/share/pynq-venv/bin/python3 \
+    phase4_9_live_udp_recvmmsg_dma.py \
+    --receive-batch 64 --batch-packets 256
+*/
+
+#include <arpa/inet.h>
+#include <errno.h>
+#include <netinet/in.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <unistd.h>
+
+#define MAX_DATAGRAM_SIZE 2048
+#define MAX_RECEIVE_BATCH 256
+#define HFT_PACKET_SIZE 32
+
+/* Match the ctypes.Structure in the Python driver. */
+struct hft_rx_slot {
+    uint32_t length;
+    uint32_t flags;
+    uint8_t sender_ip[4];
+    uint16_t sender_port; /* Host byte order. */
+    uint16_t reserved;
+    uint8_t payload[HFT_PACKET_SIZE];
+};
+
+_Static_assert(sizeof(struct hft_rx_slot) == 48,
+               "hft_rx_slot layout must match Python ctypes");
+
+struct hft_receiver {
+    int socket_fd;
+    unsigned int batch_size;
+    struct mmsghdr *messages;
+    struct iovec *vectors;
+    struct sockaddr_in *senders;
+    uint8_t *buffers;
+};
+
+void hft_receiver_close(struct hft_receiver *receiver)
+{
+    if (receiver == NULL) {
+        return;
+    }
+
+    if (receiver->socket_fd >= 0) {
+        close(receiver->socket_fd);
+    }
+    free(receiver->messages);
+    free(receiver->vectors);
+    free(receiver->senders);
+    free(receiver->buffers);
+    free(receiver);
+}
+
 struct hft_receiver *hft_receiver_open(
     const char *listen_ip,
     uint16_t listen_port,
@@ -126,3 +199,12 @@ int hft_receiver_receive(
         slot->reserved = 0;
 
         if (slot->length == HFT_PACKET_SIZE && !(slot->flags & MSG_TRUNC)) {
+            memcpy(slot->payload,
+                   receiver->buffers + (size_t)index * MAX_DATAGRAM_SIZE,
+                   HFT_PACKET_SIZE);
+        } else {
+            memset(slot->payload, 0, HFT_PACKET_SIZE);
+        }
+    }
+    return received;
+}
