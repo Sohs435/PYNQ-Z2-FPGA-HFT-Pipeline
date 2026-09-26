@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Live HFT1 UDP -> DDR -> DMA -> FPGA parser -> DDR test for PYNQ.
 
-Run this program on the PYNQ first. It receives live 32-byte UDP payloads,
-collects them into batches, copies each batch into physically contiguous PS DDR,
-passes it through the AXI DMA and HFT1 parser, and compares the S2MM output in
-PS DDR against the original UDP bytes.
-"""
+#Run this program on the PYNQ first. It receives live 32-byte UDP payloads,
+#collects them into batches, copies each batch into physically contiguous PS DDR,
+#passes it through the AXI DMA and HFT1 parser, and compares the S2MM output in
+#PS DDR against the original UDP bytes.
+
 
 import argparse
 import socket
