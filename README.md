@@ -54,6 +54,17 @@ See `phase2_udp_communication.md` section 2.2 and 2.3.
 
 See docs for detailed report of how system works. Any images in md files  can be viewed better by accessing docs/images.
 
-## Results
+##Complete file path from Sender to final decision
 
-They are currently scattered all over the different files in docs. 
+Windows:
+phase4_9_live_udp_sender.py
+        -> UDP ->
+PYNQ Processing System:
+phase4_9_live_udp_dma_test.py
+        -> AXI DMA MM2S ->
+Programmable Logic:
+phase5_hft_pipeline.bit
+phase5_hft_pipeline.hwh
+        -> AXI DMA S2MM ->
+PYNQ Processing System:
+phase4_9_live_udp_dma_test.py
