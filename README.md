@@ -97,5 +97,10 @@ $$
 
 ![Vivado timing summary for the complete FPGA pipeline](images/phase5_pl_timing_summary.png)
 
-In addition, 9652 LUTS were in use along with 1888 Flip Flops and 16.5 Block RAM blocks (approx 74.25 KiB of block ram, 36 Kb per block).
+In addition, 9652 LUTS were in use along with 1888 Flip Flops and 16.5 Block RAM blocks (approx 74.25 KiB of block ram, 36 Kb per block). 
+A further point of clarification that needs to be brought up is the fact that each AXI beat contains 32 bits. So to parse a 32 byte packet, it would take 8 cycles (essentially an 8 state FSM where the state is dependent on the beat count). This is the only module in the FPGA fabric that takes multiple cycles to provide the required output. Because of this, the true maximum packet rate sits closer to:
+
+$$
+PacketRate_{max}^{Mpps} \approx \frac{62.5}{8} = 7.8125Mpps
+$$
 
