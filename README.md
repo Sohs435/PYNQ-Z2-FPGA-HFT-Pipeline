@@ -17,7 +17,7 @@ Figure 1 illustrates the end-to-end packet flow through the proposed architectur
 <b>Figure 1.</b> End-to-end packet flow through the proposed FPGA HFT pipeline.
 </p>
 
-## ArchitecturE
+## Architecture
 
 Laptop UDP generator
 → PYNQ PS Ethernet
@@ -62,7 +62,7 @@ phase4_9_live_udp_sender.py
 -> UDP ->
         
 PYNQ Processing System:
-phase4_9_live_udp_dma_test.py / receive_market_stream_optimized2.c
+phase4_9_live_udp_dma_test.py / phase4_9_live_udp_recvmmsg_dma.py and receive_udp_dma.c for recvmmsg
 
 -> AXI DMA MM2S ->
         
