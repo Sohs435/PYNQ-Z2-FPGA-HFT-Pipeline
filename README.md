@@ -64,7 +64,7 @@ See `phase2_udp_communication.md` section 2.2 and 2.3.
 
 ## Repository structure
 
-See docs for detailed report of how system works. Any images in md files  can be viewed better by accessing docs/images.
+See docs for detailed report of how system works. Any images in md files  can be viewed better by accessing docs/images. Note. The Phase 5 documentation does not feature the overall fpga path usage and maximum frequency. That is present in this file itself 
 
 ## Complete file path from Sender to final decision
 
@@ -87,9 +87,15 @@ phase5_hft_pipeline.hwh
 PYNQ Processing System:
 phase4_9_live_udp_dma_test.py
 
-## FPGA path maximum clock frequency
+## FPGA path usage and maximum frequency 
 
-The complete FPGA path, from packet parser to trading decision, met its 50 MHz timing constraint with +5.330 ns worst setup slack and zero failing endpoints. At 20,000 packets/s, that corresponds to approximately 2,500 PL clock cycles per packet; the measured throughput bottleneck was PS reception and DMA control.
+The complete FPGA path, from packet parser to trading decision, met its 50 MHz timing constraint with +5.330 ns worst setup slack and zero failing endpoints. At 20,000 packets/s, that corresponds to approximately 2,500 PL clock cycles per packet; the measured throughput bottleneck was PS reception and DMA control. Therefore
+
+$$
+F_{max}^{MHz} = \frac{1000}{T_{ns} - WNS_{ns}} \approx 62.5MHz
+$$
 
 ![Vivado timing summary for the complete FPGA pipeline](images/phase5_pl_timing_summary.png)
+
+In addition, 9652 LUTS were in use along with 1888 Flip Flops and 16.5 Block RAM blocks (approx 74.25 KiB of block ram, 36 Kb per block).
 
