@@ -2,20 +2,32 @@
 
 ## Overview
 
-Low-latency market-data processing and trading pipeline emulation developed on a
-PYNQ-Z2 using Python, Linux networking, AXI DMA, AXI4-Stream, system verilog and sibling language/s.
+Market-data processing and trading pipeline developed on the PYNQ-Z2 using Python, C, Linux networking, AXI DMA, AXI4-Stream, and SystemVerilog.
 
-Figure 1 illustrates the end-to-end packet flow through the proposed architecture. Market data is generated on the host computer, transmitted over Gigabit Ethernet to the PYNQ-Z2, transferred from the Processing System to the Programmable Logic using AXI DMA, and finally processed by the FPGA trading pipeline.
+The flow below shows the path from UDP reception to FPGA processing. The parser forwards packet bytes towards the DMA return path while its decoded fields feed the trading engine.
 
-<p align="center">
-  <img src="images/fig1_packet_flow.png"
-       alt="Packet Flow Diagram"
-       width="850">
-</p>
+```mermaid
+flowchart TD
+    Host["Laptop: HFT1 UDP sender"] --> Socket["PYNQ PS: UDP receiver"]
+    Socket --> Tx["PS DDR: transmit batch"]
+    Tx --> MM2S["AXI DMA MM2S"]
 
-<p align="center">
-<b>Figure 1.</b> End-to-end packet flow through the proposed FPGA HFT pipeline.
-</p>
+    subgraph PL["Programmable Logic"]
+        MM2S --> Parser["HFT1 parser and validation"]
+        Parser -->|Packet stream| FIFO["AXI4-Stream FIFO"]
+        FIFO --> S2MM["AXI DMA S2MM"]
+
+        Parser -->|Decoded fields| Filter["Instrument filter"]
+        Filter --> Tracker["Sequence tracker"]
+        Tracker --> Book["Five-instrument order book"]
+        Book --> Features["Feature extraction"]
+        Features --> Decision["BUY / SELL / HOLD decision"]
+    end
+
+    S2MM --> Rx["PS DDR: receive buffer"]
+    Rx --> Check["PS: verify returned packets"]
+```
+
 
 ## Architecture
 
@@ -74,3 +86,10 @@ phase5_hft_pipeline.hwh
         
 PYNQ Processing System:
 phase4_9_live_udp_dma_test.py
+
+## FPGA path maximum clock frequency
+
+The complete FPGA path, from packet parser to trading decision, met its 50 MHz timing constraint with +5.330 ns worst setup slack and zero failing endpoints. At 20,000 packets/s, that corresponds to approximately 2,500 PL clock cycles per packet; the measured throughput bottleneck was PS reception and DMA control.
+
+![Vivado timing summary for the complete FPGA pipeline](images/phase5_pl_timing_summary.png)
+
